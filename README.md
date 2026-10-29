@@ -58,6 +58,7 @@ Les principales routes sont :
 - `POST /api/matches`
 - `POST /api/matches/{match_id}/events`
 - `GET /api/matches/{match_id}/analytics?player_id={player_id}`
+- `GET /api/matches/{match_id}/pdf`
 
 Les coordonnées d’événements suivent le terrain StatsBomb (`x` de 0 à 120 et `y` de 0 à 80). La possession exposée par la première version du moteur correspond à la part des passes enregistrées par équipe.
 

@@ -10,6 +10,7 @@ TEST_DATABASE_PATH = Path(tempfile.gettempdir()) / f"statx_test_{uuid4().hex}.db
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DATABASE_PATH.as_posix()}"
 
 from sqlalchemy import inspect  # noqa: E402
+from pypdf import PdfReader  # noqa: E402
 
 from app.api.routes import (  # noqa: E402
     EXPORT_ROOT,
@@ -17,6 +18,7 @@ from app.api.routes import (  # noqa: E402
     create_match,
     create_player,
     create_team,
+    download_match_report,
     get_match_analytics,
 )
 from app.api.schemas import EventCreate, MatchCreate, PlayerCreate, TeamCreate  # noqa: E402
@@ -39,6 +41,7 @@ def test_tables_and_api_routes_are_registered() -> None:
         "/api/matches",
         "/api/matches/{match_id}/events",
         "/api/matches/{match_id}/analytics",
+        "/api/matches/{match_id}/pdf",
     }
     registered_routes = {route.path for route in app.routes}
     assert expected_routes.issubset(registered_routes)
@@ -113,4 +116,35 @@ def test_complete_match_analytics_workflow() -> None:
             image_path = EXPORT_ROOT / public_path.removeprefix("/exports/")
             assert image_path.is_file()
             assert image_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_generate_pdf_report() -> None:
+    """The PDF endpoint returns a valid, non-empty one-page PDF response."""
+    init_db()
+    with SessionLocal() as session:
+        match = create_match(
+            MatchCreate.model_validate(
+                {
+                    "home_team_id": create_team(TeamCreate(name="PDF Home"), session).id,
+                    "away_team_id": create_team(TeamCreate(name="PDF Away"), session).id,
+                    "match_date": "2026-10-29T20:00:00Z",
+                    "home_score": 0,
+                    "away_score": 0,
+                    "competition": "StatX PDF Test",
+                }
+            ),
+            session,
+        )
+        response = download_match_report(match.id, session)
+
+        assert response.status_code == 200
+        assert response.media_type == "application/pdf"
+        assert "attachment" in response.headers["content-disposition"]
+        pdf_path = Path(response.path)
+        assert pdf_path.is_file()
+        assert pdf_path.stat().st_size > 1_000
+        assert pdf_path.read_bytes().startswith(b"%PDF-")
+        reader = PdfReader(pdf_path)
+        assert len(reader.pages) == 1
+        assert "StatX Analytics" in (reader.pages[0].extract_text() or "")
 

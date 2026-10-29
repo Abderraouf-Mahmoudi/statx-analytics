@@ -1,8 +1,11 @@
 """REST endpoints for teams, players, matches, events, and analytics."""
 
 from pathlib import Path
+from collections import Counter
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -20,6 +23,12 @@ from app.api.schemas import (
     TeamRead,
 )
 from app.core.analytics import generate_heatmap, generate_pass_map, generate_shot_map
+from app.core.pdf_generator import (
+    MatchReportData,
+    MatchReportGenerator,
+    ReportTeamMetrics,
+    ReportVisuals,
+)
 from app.db.database import get_db
 from app.db.models import Event, Match, Player, Team
 
@@ -27,6 +36,7 @@ from app.db.models import Event, Match, Player, Team
 router = APIRouter(prefix="/api")
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 EXPORT_ROOT = PROJECT_ROOT / "data" / "exports"
+logger = logging.getLogger(__name__)
 
 
 def _commit_or_conflict(db: Session, detail: str) -> None:
@@ -176,4 +186,147 @@ def get_match_analytics(
             "heatmap": public_path(heatmap_path),
         },
     )
+
+
+@router.get("/matches/{match_id}/pdf", response_class=FileResponse)
+def download_match_report(
+    match_id: int,
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """Generate and download the printable one-page report for a match."""
+    match = db.scalar(
+        select(Match)
+        .options(joinedload(Match.home_team), joinedload(Match.away_team))
+        .where(Match.id == match_id)
+    )
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    events = db.scalars(
+        select(Event).options(joinedload(Event.player)).where(Event.match_id == match_id)
+    ).all()
+    analytics = get_match_analytics(match_id, None, db)
+    player_event_counts = Counter(event.player_id for event in events)
+    key_player_id = player_event_counts.most_common(1)[0][0] if player_event_counts else None
+    key_player = next(
+        (event.player for event in events if event.player_id == key_player_id),
+        None,
+    )
+    key_player_name = key_player.name if key_player else "Aucun joueur"
+
+    match_dir = EXPORT_ROOT / "matches" / str(match_id)
+    shot_map = match_dir / "shot_map.png"
+    pass_map = match_dir / f"pass_map_team_{match.home_team_id}.png"
+    heatmap = match_dir / (
+        f"heatmap_player_{key_player_id}.png" if key_player_id else "heatmap_match.png"
+    )
+    home_events = [
+        event for event in events if event.player.team_id == match.home_team_id
+    ]
+
+    try:
+        generate_shot_map(events, shot_map)
+        generate_pass_map(home_events, None, pass_map)
+        generate_heatmap(events, key_player_id, heatmap)
+
+        insights = _build_tactical_insights(
+            events,
+            analytics.home,
+            analytics.away,
+            key_player_name,
+            player_event_counts.get(key_player_id, 0),
+        )
+        report_data = MatchReportData(
+            match_id=match.id,
+            match_date=match.match_date,
+            competition=match.competition,
+            home=ReportTeamMetrics(
+                name=analytics.home.team_name,
+                score=analytics.home.score,
+                total_xg=analytics.home.total_xg,
+                possession=analytics.home.possession,
+                shots_on_target=analytics.home.shots_on_target,
+            ),
+            away=ReportTeamMetrics(
+                name=analytics.away.team_name,
+                score=analytics.away.score,
+                total_xg=analytics.away.total_xg,
+                possession=analytics.away.possession,
+                shots_on_target=analytics.away.shots_on_target,
+            ),
+            key_player_name=key_player_name,
+            tactical_insights=insights,
+        )
+        report_path = MatchReportGenerator(EXPORT_ROOT).generate(
+            report_data,
+            ReportVisuals(
+                shot_map=shot_map,
+                pass_map=pass_map,
+                heatmap=heatmap,
+            ),
+        )
+    except Exception as exc:
+        logger.exception("Unable to generate PDF report for match %s", match_id)
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to generate the PDF report or its analytics visuals",
+        ) from exc
+
+    return FileResponse(
+        path=report_path,
+        media_type="application/pdf",
+        filename=report_path.name,
+    )
+
+
+def _build_tactical_insights(
+    events: list[Event],
+    home: TeamMetrics,
+    away: TeamMetrics,
+    key_player_name: str,
+    key_player_actions: int,
+) -> list[str]:
+    """Create three concise, data-backed observations for the PDF footer."""
+    shots = [event for event in events if event.type == "shot"]
+    shots_in_box = [
+        event
+        for event in shots
+        if event.x_start >= 102 and 18 <= event.y_start <= 62
+    ]
+    box_share = round(len(shots_in_box) / len(shots) * 100) if shots else 0
+
+    shot_insight = (
+        f"{box_share}% des tirs ont ete declenches depuis la surface de reparation."
+        if shots
+        else "Aucun tir n'a ete enregistre pour cette rencontre."
+    )
+    if abs(home.total_xg - away.total_xg) < 0.01:
+        xg_insight = f"Equilibre en xG: {home.total_xg:.2f} pour chaque equipe."
+    else:
+        xg_leader = home if home.total_xg > away.total_xg else away
+        xg_trailer = away if xg_leader is home else home
+        xg_insight = (
+            f"{xg_leader.team_name} domine en xG avec "
+            f"{xg_leader.total_xg:.2f} contre {xg_trailer.total_xg:.2f}."
+        )
+
+    if abs(home.possession - away.possession) < 0.1:
+        possession_text = "La possession estimee est parfaitement equilibree"
+    else:
+        possession_leader = home if home.possession > away.possession else away
+        possession_text = (
+            f"{possession_leader.team_name} controle "
+            f"{possession_leader.possession:.1f}% de la possession estimee"
+        )
+    key_player_text = (
+        f"{key_player_name} concentre {key_player_actions} actions"
+        if key_player_actions
+        else "aucun joueur cle ne se degage"
+    )
+
+    return [
+        shot_insight,
+        xg_insight,
+        f"{possession_text}; {key_player_text}.",
+    ]
 
