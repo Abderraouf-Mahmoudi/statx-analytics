@@ -49,7 +49,17 @@ cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
-L’API est disponible sur `http://localhost:8000`, sa documentation interactive sur `http://localhost:8000/docs` et le contrôle de santé sur `http://localhost:8000/health`.
+L’API est disponible sur `http://localhost:8000`, sa documentation interactive sur `http://localhost:8000/docs` et le contrôle de santé sur `http://localhost:8000/health`. La base SQLite `backend/statx.db` et ses tables sont créées automatiquement au démarrage.
+
+Les principales routes sont :
+
+- `POST /api/teams`
+- `POST /api/players`
+- `POST /api/matches`
+- `POST /api/matches/{match_id}/events`
+- `GET /api/matches/{match_id}/analytics?player_id={player_id}`
+
+Les coordonnées d’événements suivent le terrain StatsBomb (`x` de 0 à 120 et `y` de 0 à 80). La possession exposée par la première version du moteur correspond à la part des passes enregistrées par équipe.
 
 Pour générer la visualisation de démonstration :
 
@@ -58,6 +68,13 @@ python -m app.core.pitch
 ```
 
 L’image est enregistrée dans `data/exports/test_pitch.png` à la racine du monorepo.
+
+Pour installer les outils de développement et exécuter les tests d’intégration :
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
 
 ### Frontend
 

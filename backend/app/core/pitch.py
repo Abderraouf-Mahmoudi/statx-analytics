@@ -29,7 +29,11 @@ def generate_test_pitch(output_path: Path | str = DEFAULT_OUTPUT_PATH) -> Path:
         linewidth=2,
         goal_type="box",
     )
-    figure, axis = pitch.draw(figsize=(12, 8), constrained_layout=True)
+    figure, axis = pitch.draw(
+        figsize=(12, 8),
+        tight_layout=False,
+        constrained_layout=True,
+    )
     figure.set_facecolor("#0F2D1A")
 
     shots = (
