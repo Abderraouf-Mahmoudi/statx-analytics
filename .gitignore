@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.yarn/
+.pnpm-store/
+frontend/dist/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Large media files
+*.mp4
+*.avi
+
+# Data and generated exports
+data/raw_videos/
+data/exports/
+
+# Environment and secrets
+.env.*
+!.env.example
+
+# IDEs and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Test and coverage output
+.coverage
+htmlcov/
+coverage/
+
