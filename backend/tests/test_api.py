@@ -20,6 +20,8 @@ from app.api.routes import (  # noqa: E402
     create_team,
     download_match_report,
     get_match_analytics,
+    list_matches,
+    list_teams,
 )
 from app.api.schemas import EventCreate, MatchCreate, PlayerCreate, TeamCreate  # noqa: E402
 from app.db.database import SessionLocal, engine, init_db  # noqa: E402
@@ -45,6 +47,10 @@ def test_tables_and_api_routes_are_registered() -> None:
     }
     registered_routes = {route.path for route in app.routes}
     assert expected_routes.issubset(registered_routes)
+
+    cors = next(middleware for middleware in app.user_middleware if middleware.cls.__name__ == "CORSMiddleware")
+    assert "http://localhost:5173" in cors.kwargs["allow_origins"]
+    assert "Content-Disposition" in cors.kwargs["expose_headers"]
 
 
 def test_complete_match_analytics_workflow() -> None:
@@ -87,6 +93,8 @@ def test_complete_match_analytics_workflow() -> None:
             ),
             session,
         )
+        assert {team.id for team in list_teams(session)} == {home.id, away.id}
+        assert match.id in {listed_match.id for listed_match in list_matches(session)}
 
         event_payload = [
             {"player_id": home_player.id, "minute": 12, "type": "shot", "x_start": 108, "y_start": 40, "outcome": "goal", "xg_value": 0.55},
@@ -111,6 +119,8 @@ def test_complete_match_analytics_workflow() -> None:
         assert analytics.away.shots_on_target == 1
         assert analytics.home.possession == 66.7
         assert analytics.away.possession == 33.3
+        assert analytics.key_player == "Home Striker"
+        assert len(analytics.tactical_insights) == 3
 
         for public_path in analytics.graphics.values():
             image_path = EXPORT_ROOT / public_path.removeprefix("/exports/")

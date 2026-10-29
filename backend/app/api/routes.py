@@ -47,6 +47,12 @@ def _commit_or_conflict(db: Session, detail: str) -> None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail) from exc
 
 
+@router.get("/teams", response_model=list[TeamRead])
+def list_teams(db: Session = Depends(get_db)) -> list[Team]:
+    """Return all teams ordered alphabetically."""
+    return list(db.scalars(select(Team).order_by(Team.name)).all())
+
+
 @router.post("/teams", response_model=TeamRead, status_code=status.HTTP_201_CREATED)
 def create_team(payload: TeamCreate, db: Session = Depends(get_db)) -> Team:
     team = Team(name=payload.name, logo_url=str(payload.logo_url) if payload.logo_url else None)
@@ -65,6 +71,12 @@ def create_player(payload: PlayerCreate, db: Session = Depends(get_db)) -> Playe
     _commit_or_conflict(db, "Unable to create player")
     db.refresh(player)
     return player
+
+
+@router.get("/matches", response_model=list[MatchRead])
+def list_matches(db: Session = Depends(get_db)) -> list[Match]:
+    """Return all matches, newest first."""
+    return list(db.scalars(select(Match).order_by(Match.match_date.desc())).all())
 
 
 @router.post("/matches", response_model=MatchRead, status_code=status.HTTP_201_CREATED)
@@ -176,15 +188,33 @@ def get_match_analytics(
     def public_path(path: Path) -> str:
         return f"/exports/{path.relative_to(EXPORT_ROOT).as_posix()}"
 
+    home_metrics = metrics(match.home_team, match.home_score)
+    away_metrics = metrics(match.away_team, match.away_score)
+    player_event_counts = Counter(event.player_id for event in events)
+    key_player_id = player_event_counts.most_common(1)[0][0] if player_event_counts else None
+    key_player = next(
+        (event.player for event in events if event.player_id == key_player_id),
+        None,
+    )
+    key_player_name = key_player.name if key_player else None
+
     return AnalyticsResponse(
         match_id=match.id,
-        home=metrics(match.home_team, match.home_score),
-        away=metrics(match.away_team, match.away_score),
+        home=home_metrics,
+        away=away_metrics,
         graphics={
             "shot_map": public_path(shot_path),
             "pass_map": public_path(pass_path),
             "heatmap": public_path(heatmap_path),
         },
+        tactical_insights=_build_tactical_insights(
+            events,
+            home_metrics,
+            away_metrics,
+            key_player_name or "Aucun joueur",
+            player_event_counts.get(key_player_id, 0),
+        ),
+        key_player=key_player_name,
     )
 
 
@@ -296,12 +326,12 @@ def _build_tactical_insights(
     box_share = round(len(shots_in_box) / len(shots) * 100) if shots else 0
 
     shot_insight = (
-        f"{box_share}% des tirs ont ete declenches depuis la surface de reparation."
+        f"{box_share}% des tirs ont été déclenchés depuis la surface de réparation."
         if shots
-        else "Aucun tir n'a ete enregistre pour cette rencontre."
+        else "Aucun tir n'a été enregistré pour cette rencontre."
     )
     if abs(home.total_xg - away.total_xg) < 0.01:
-        xg_insight = f"Equilibre en xG: {home.total_xg:.2f} pour chaque equipe."
+        xg_insight = f"Équilibre en xG : {home.total_xg:.2f} pour chaque équipe."
     else:
         xg_leader = home if home.total_xg > away.total_xg else away
         xg_trailer = away if xg_leader is home else home
@@ -311,17 +341,17 @@ def _build_tactical_insights(
         )
 
     if abs(home.possession - away.possession) < 0.1:
-        possession_text = "La possession estimee est parfaitement equilibree"
+        possession_text = "La possession estimée est parfaitement équilibrée"
     else:
         possession_leader = home if home.possession > away.possession else away
         possession_text = (
-            f"{possession_leader.team_name} controle "
-            f"{possession_leader.possession:.1f}% de la possession estimee"
+            f"{possession_leader.team_name} contrôle "
+            f"{possession_leader.possession:.1f}% de la possession estimée"
         )
     key_player_text = (
         f"{key_player_name} concentre {key_player_actions} actions"
         if key_player_actions
-        else "aucun joueur cle ne se degage"
+        else "aucun joueur clé ne se dégage"
     )
 
     return [

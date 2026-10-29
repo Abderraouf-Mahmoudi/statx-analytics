@@ -116,4 +116,6 @@ class AnalyticsResponse(BaseModel):
     home: TeamMetrics
     away: TeamMetrics
     graphics: dict[str, str]
+    tactical_insights: list[str]
+    key_player: str | None = None
 

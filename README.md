@@ -89,6 +89,8 @@ npm run dev
 
 L’interface de développement est alors disponible sur `http://localhost:5173`.
 
+Le frontend utilise `VITE_API_BASE_URL` (valeur par défaut : `http://localhost:8000/api`). Le backend autorise par défaut les origines Vite `http://localhost:5173` et `http://127.0.0.1:5173`; elles peuvent être modifiées avec `CORS_ORIGINS`.
+
 ## Commandes Git d’initialisation
 
 ```bash
