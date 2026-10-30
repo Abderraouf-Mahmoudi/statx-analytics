@@ -3,7 +3,7 @@
 from datetime import date, datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -37,13 +37,13 @@ class Player(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     # Transitional compatibility fields used by the prototype API.
-    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(120), index=True)
-    jersey_number: Mapped[int] = mapped_column(Integer)
+    jersey_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     position: Mapped[str] = mapped_column(String(50))
     preferred_foot: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
-    team: Mapped["Team"] = relationship(back_populates="players")
+    team: Mapped["Team | None"] = relationship(back_populates="players")
     events: Mapped[list["Event"]] = relationship(back_populates="player")
     tracking_points: Mapped[list["TrackingPoint"]] = relationship(
         back_populates="player", cascade="all, delete-orphan"
@@ -83,6 +83,9 @@ class Consent(Base):
     consent_type: Mapped[str] = mapped_column(String(40))
     status: Mapped[str] = mapped_column(String(20))
     document_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    subject_is_minor: Mapped[bool] = mapped_column(Boolean, default=False)
+    guardian_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     evidence_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
