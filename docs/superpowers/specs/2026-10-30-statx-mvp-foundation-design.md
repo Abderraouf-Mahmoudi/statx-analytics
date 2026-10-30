@@ -644,6 +644,8 @@ La structure et les interactions sont validées. La direction graphique finale r
 
 Le brief utilisé pour produire ces références dans Google Stitch est conservé dans `docs/design/stitch/STATX_STITCH_PROMPT_PACK.md`. Il fixe les écrans, états, contraintes tactiles, règles RTL et livrables attendus, sans remplacer les exports visuels finaux.
 
+La direction visuelle retenue après examen des exports est définie dans `docs/design/stitch/STATX_VISUAL_DIRECTION.md`. Ce document reprend les idées de composition utiles de Stitch, corrige les écarts métier et devient la référence UI pour le plan d’implémentation. Les fichiers HTML générés par Stitch ne sont pas des sources de production.
+
 ## 16. Offline et synchronisation
 
 - Le poste principal héberge FastAPI, SQLite et les médias.
@@ -878,7 +880,6 @@ Les choix suivants peuvent être réglés pendant le plan d’implémentation sa
 
 ## 28. Décisions encore attendues du porteur du produit
 
-- références UI/UX finales ;
 - logo et variantes officielles ;
 - terminologie arabe validée ;
 - identité exacte du premier club pilote ;
