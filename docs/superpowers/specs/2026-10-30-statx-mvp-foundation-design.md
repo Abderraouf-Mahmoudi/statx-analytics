@@ -642,6 +642,8 @@ La structure et les interactions sont validées. La direction graphique finale r
 - responsive ;
 - présentation des graphiques.
 
+Le brief utilisé pour produire ces références dans Google Stitch est conservé dans `docs/design/stitch/STATX_STITCH_PROMPT_PACK.md`. Il fixe les écrans, états, contraintes tactiles, règles RTL et livrables attendus, sans remplacer les exports visuels finaux.
+
 ## 16. Offline et synchronisation
 
 - Le poste principal héberge FastAPI, SQLite et les médias.
