@@ -1,0 +1,1 @@
+export function PlayerForm() { return <form className="dense-form"><h2>Identité joueur</h2><label>Prénom<input className="touch-target" /></label><label>Nom<input className="touch-target" /></label><button className="touch-target primary-action">Enregistrer</button></form>; }

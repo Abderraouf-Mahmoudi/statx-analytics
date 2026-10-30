@@ -1,0 +1,1 @@
+export function RegistrationForm() { return <form className="dense-form"><h2>Inscription saisonnière</h2><label>Numéro<input className="touch-target" type="number" min="0" max="99" /></label><button className="touch-target primary-action">Inscrire</button></form>; }
