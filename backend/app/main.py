@@ -8,7 +8,24 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router as api_router
 from app.api.video_routes import router as video_router
+from app.api.problems import (
+    ProblemException,
+    authentication_exception_handler,
+    authorization_exception_handler,
+    csrf_exception_handler,
+    invalid_credentials_exception_handler,
+    not_found_exception_handler,
+    problem_exception_handler,
+)
+from app.api.v1.router import router as v1_router
 from app.config import Settings, get_settings
+from app.modules.identity.dependencies import (
+    AuthenticationRequired,
+    AuthorizationDenied,
+    CsrfRejected,
+)
+from app.modules.identity.security import InvalidCredentials
+from app.modules.identity.service import ResourceNotFound
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -40,6 +57,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.include_router(api_router)
     application.include_router(video_router)
+    application.include_router(v1_router)
+    application.add_exception_handler(ProblemException, problem_exception_handler)
+    application.add_exception_handler(AuthenticationRequired, authentication_exception_handler)
+    application.add_exception_handler(AuthorizationDenied, authorization_exception_handler)
+    application.add_exception_handler(CsrfRejected, csrf_exception_handler)
+    application.add_exception_handler(ResourceNotFound, not_found_exception_handler)
+    application.add_exception_handler(InvalidCredentials, invalid_credentials_exception_handler)
     application.mount("/exports", StaticFiles(directory=export_root), name="exports")
 
     @application.get("/health", tags=["health"])
