@@ -1,47 +1,48 @@
-"""SQLite engine and session management for StatX Analytics."""
+"""Database engine and request-scoped session management."""
 
-import os
 from collections.abc import Generator
-from pathlib import Path
 
-from dotenv import load_dotenv
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_DATABASE_PATH = BACKEND_DIR / "statx.db"
-load_dotenv(BACKEND_DIR / ".env")
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    f"sqlite:///{DEFAULT_DATABASE_PATH.as_posix()}",
-)
+from app.config import Settings, get_settings
 
 
 class Base(DeclarativeBase):
     """Base class shared by all SQLAlchemy models."""
 
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
-)
+def create_engine_from_settings(settings: Settings) -> Engine:
+    """Build an engine and enforce StatX SQLite integrity pragmas."""
+    is_sqlite = settings.database_url.startswith("sqlite")
+    configured_engine = create_engine(
+        settings.database_url,
+        connect_args={"check_same_thread": False} if is_sqlite else {},
+    )
+    if is_sqlite:
+
+        @event.listens_for(configured_engine, "connect")
+        def configure_sqlite(dbapi_connection: object, _: object) -> None:
+            cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute(f"PRAGMA busy_timeout={settings.sqlite_busy_timeout_ms}")
+            cursor.close()
+    return configured_engine
+
+
+engine = create_engine_from_settings(get_settings())
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
-if DATABASE_URL.startswith("sqlite"):
-
-    @event.listens_for(engine, "connect")
-    def enable_sqlite_foreign_keys(dbapi_connection: object, _: object) -> None:
-        """Enable foreign-key enforcement on every SQLite connection."""
-        cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-
 def init_db() -> None:
-    """Create every table that does not exist yet."""
-    from app.db import models  # noqa: F401 - registers model metadata
+    """Create registered tables for tests and local maintenance only.
+
+    Production application startup deliberately does not call this helper;
+    deployed schema changes are managed by Alembic migrations.
+    """
+    from app.db import models  # noqa: F401 - registers legacy model metadata
 
     Base.metadata.create_all(bind=engine)
 

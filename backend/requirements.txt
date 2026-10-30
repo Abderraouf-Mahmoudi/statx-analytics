@@ -15,4 +15,8 @@ imageio-ffmpeg
 ultralytics>=8.3,<9
 supervision>=0.25,<0.28
 opencv-python>=4.10,<5
+alembic>=1.14,<2
+pydantic-settings>=2.7,<3
+pwdlib[argon2]>=0.2,<1
+itsdangerous>=2.2,<3
 
