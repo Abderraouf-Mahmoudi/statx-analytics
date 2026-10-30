@@ -54,3 +54,9 @@ Thumbs.db
 htmlcov/
 coverage/
 
+# Superpowers visual brainstorming sessions
+.superpowers/
+
+# Local isolated Git worktrees
+.worktrees/
+
