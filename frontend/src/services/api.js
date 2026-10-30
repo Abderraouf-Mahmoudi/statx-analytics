@@ -6,9 +6,10 @@ const API_ORIGIN = new URL(API_BASE_URL).origin;
 
 
 async function request(path, options = {}) {
+  const { headers, ...requestOptions } = options;
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { Accept: "application/json", ...options.headers },
-    ...options,
+    ...requestOptions,
+    headers: { Accept: "application/json", ...headers },
   });
 
   if (!response.ok) {
@@ -43,6 +44,29 @@ export async function getMatches() {
 }
 
 
+export async function getTrackingIngestionStatus(matchId) {
+  const response = await request(`/matches/${matchId}/tracking-status`);
+  return response.json();
+}
+
+
+export async function ingestMatchTracking(matchId, payload) {
+  const response = await request(`/matches/${matchId}/ingest-tracking`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return response.json();
+}
+
+
+export async function getTacticalInsights(matchId, teamId = null) {
+  const query = teamId ? `?team_id=${encodeURIComponent(teamId)}` : "";
+  const response = await request(`/matches/${matchId}/tactical-insights${query}`);
+  return response.json();
+}
+
+
 export function resolveMediaUrl(path) {
   if (!path) return "";
   if (/^https?:\/\//i.test(path)) return path;
@@ -66,5 +90,35 @@ export async function downloadMatchPdf(matchId) {
   link.click();
   link.remove();
   URL.revokeObjectURL(objectUrl);
+}
+
+
+export async function uploadMatchVideo(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await request("/video/upload", {
+    method: "POST",
+    body: formData,
+  });
+  return response.json();
+}
+
+
+export async function trimMatchVideo({ videoId, startTime, endTime }) {
+  const response = await request("/video/trim", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      video_id: videoId,
+      start_time: startTime,
+      end_time: endTime,
+    }),
+  });
+  return response.json();
+}
+
+
+export function getClipStreamUrl(clipId) {
+  return `${API_BASE_URL}/video/stream/${clipId}`;
 }
 

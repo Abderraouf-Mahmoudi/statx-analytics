@@ -16,7 +16,7 @@ function formatMatch(match, teamsById) {
 }
 
 
-export default function TopBar({ matches, teamsById, activeMatchId, onMatchChange, analytics, onDownload, pdfLoading }) {
+export default function TopBar({ matches, teamsById, activeMatchId, onMatchChange, analytics, onDownload, pdfLoading, activeModule }) {
   return (
     <header className="relative z-10 border-b border-slate-800/80 bg-[#0B0F19]/95 backdrop-blur-xl">
       <div className="mx-auto max-w-[1500px] px-4 py-4 sm:px-6 lg:px-8">
@@ -28,7 +28,13 @@ export default function TopBar({ matches, teamsById, activeMatchId, onMatchChang
               <h1 className="text-xl font-black tracking-tight text-white sm:text-2xl">StatX Analytics</h1>
             </div>
           </div>
-          <div className="flex flex-1 flex-col gap-3 lg:flex-row lg:items-center xl:max-w-5xl xl:justify-end">
+          {activeModule === "video" && (
+            <div className="flex items-center gap-3 rounded-xl border border-emerald-400/15 bg-emerald-400/5 px-4 py-2.5">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+              <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-400">Module actif</p><p className="text-sm font-bold text-white">Video Studio · Découpage</p></div>
+            </div>
+          )}
+          <div className={`${activeModule === "video" ? "hidden" : "flex"} flex-1 flex-col gap-3 lg:flex-row lg:items-center xl:max-w-5xl xl:justify-end`}>
             <label className="relative min-w-0 flex-1 lg:max-w-[380px]">
               <span className="sr-only">Match actif</span>
               <select value={activeMatchId} onChange={(event) => onMatchChange(event.target.value)} disabled={!matches.length} className="h-11 w-full appearance-none rounded-xl border border-slate-700 bg-card px-4 pr-10 text-sm font-medium text-slate-100 outline-none transition focus:border-emerald-400/70 focus:ring-2 focus:ring-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-50">

@@ -62,6 +62,34 @@ Les principales routes sont :
 
 Les coordonnées d’événements suivent le terrain StatsBomb (`x` de 0 à 120 et `y` de 0 à 80). La possession exposée par la première version du moteur correspond à la part des passes enregistrées par équipe.
 
+### Module vidéo
+
+Le backend expose `POST /api/video/upload`, `POST /api/video/trim` et `GET /api/video/stream/{clip_id}`. Le découpage utilise en priorité `FFMPEG_BINARY`, puis FFmpeg dans le `PATH`, puis le binaire fourni par `imageio-ffmpeg`. Les vidéos sources et les clips exportés sont stockés dans les dossiers ignorés `data/raw_videos/` et `data/exports/clips/`.
+
+Le tracking IA se lance avec `POST /api/video/track/{clip_id}`. L’API répond `202` avec un `job_id`; l’état et les trajectoires finales sont disponibles sur `GET /api/video/track/jobs/{job_id}`. Le modèle par défaut est `yolov8n.pt` et peut être remplacé via `VISION_MODEL_PATH`. Pour une projection terrain fiable, transmettez quatre `source_points` ordonnés bas-gauche, bas-droite, haut-droite, haut-gauche; sans calibration, les coins de l’image sont projetés sur le terrain 105 × 68 m.
+
+### Pipeline d’ingestion SQLite
+
+Une fois le job Vision terminé, ses trajectoires peuvent être enregistrées avec `POST /api/matches/{match_id}/ingest-tracking`. Les identifiants ByteTrack étant temporaires, `player_mapping` associe chaque piste au joueur enregistré en base :
+
+```json
+{
+  "job_id": "identifiant-du-job-vision",
+  "player_mapping": {
+    "1": 12,
+    "2": 18
+  }
+}
+```
+
+L’endpoint accepte également un tableau `tracking_data` direct. Les points sont insérés par lots dans une transaction SQLite, les doublons `(match, joueur, timestamp)` sont mis à jour et la vitesse est calculée automatiquement lorsqu’elle est absente. `GET /api/matches/{match_id}/tracking-status` renvoie le total persisté affiché par le module Data Pipeline du frontend.
+
+### Insights tactiques automatisés
+
+`GET /api/matches/{match_id}/tactical-insights` analyse les coordonnées SQLite du match depuis la perspective de l’équipe à domicile. Le paramètre optionnel `team_id` permet de changer de perspective. La réponse contient la répartition adverse entre le flanc gauche (`x < 35`), l’axe (`35 ≤ x ≤ 70`) et le flanc droit (`x > 70`), les alertes de surcharge au-delà de 60 %, ainsi que la distance et la vitesse maximale calculées pour chaque joueur.
+
+Ces informations alimentent les cartes du dashboard et la section « Avis Tactique StatX » du rapport PDF. Le rapport reste limité à une page A4 et inclut la répartition spatiale, l’alerte prioritaire et les trois principaux profils télémétriques.
+
 Pour générer la visualisation de démonstration :
 
 ```bash

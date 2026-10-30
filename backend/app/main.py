@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router as api_router
+from app.api.video_routes import router as video_router
+from app.core.video_processor import ensure_video_directories
 from app.db.database import init_db
 
 
@@ -29,13 +31,14 @@ async def lifespan(_: FastAPI):
     """Initialize persistent resources before accepting requests."""
     EXPORT_ROOT.mkdir(parents=True, exist_ok=True)
     init_db()
+    ensure_video_directories()
     yield
 
 
 app = FastAPI(
     title="StatX Analytics API",
     description="API d'analyse tactique et de performance pour le football.",
-    version="0.2.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -47,6 +50,7 @@ app.add_middleware(
     expose_headers=["Content-Disposition"],
 )
 app.include_router(api_router)
+app.include_router(video_router)
 app.mount("/exports", StaticFiles(directory=EXPORT_ROOT), name="exports")
 
 

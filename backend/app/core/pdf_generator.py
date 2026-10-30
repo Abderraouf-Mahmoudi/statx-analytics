@@ -11,6 +11,8 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
 
+from app.core.tactical_engine import TacticalAnalysis
+
 
 NAVY = colors.HexColor("#111827")
 PITCH_GREEN = colors.HexColor("#0F2D1A")
@@ -42,6 +44,7 @@ class MatchReportData:
     away: ReportTeamMetrics
     key_player_name: str
     tactical_insights: Sequence[str]
+    tactical_analysis: TacticalAnalysis | None = None
 
 
 @dataclass(frozen=True)
@@ -102,7 +105,7 @@ class MatchReportGenerator:
         self._draw_header(document, data, width, height)
         self._draw_metrics(document, data, margin, width)
         self._draw_visuals(document, data, visuals, margin, width)
-        self._draw_tactical_section(document, data.tactical_insights, margin, width)
+        self._draw_tactical_section(document, data, margin, width)
 
     def _draw_header(
         self,
@@ -276,7 +279,7 @@ class MatchReportGenerator:
     def _draw_tactical_section(
         self,
         document: canvas.Canvas,
-        insights: Sequence[str],
+        data: MatchReportData,
         margin: float,
         width: float,
     ) -> None:
@@ -300,17 +303,68 @@ class MatchReportGenerator:
             "SYNTHESE AUTOMATISEE",
         )
 
-        cursor_y = y + box_height - 68
-        for insight in list(insights)[:3]:
-            document.setFillColor(ACCENT)
-            document.circle(x + 23, cursor_y + 2, 3, fill=1, stroke=0)
+        analysis = data.tactical_analysis
+        if analysis is None:
+            self._draw_legacy_insights(document, data.tactical_insights, x, y, box_width, box_height)
+        else:
+            lane_y = y + box_height - 76
+            lane_width = (box_width - 52) / 3
+            lane_values = (
+                ("FLANC GAUCHE", analysis.lane_distribution.left),
+                ("AXE", analysis.lane_distribution.center),
+                ("FLANC DROIT", analysis.lane_distribution.right),
+            )
+            for index, (label, value) in enumerate(lane_values):
+                lane_x = x + 18 + index * (lane_width + 8)
+                document.setFillColor(colors.HexColor("#173C25"))
+                document.roundRect(lane_x, lane_y - 27, lane_width, 37, 4, fill=1, stroke=0)
+                document.setFillColor(colors.HexColor("#A7F3D0"))
+                document.setFont("Helvetica-Bold", 5.8)
+                document.drawString(lane_x + 7, lane_y - 3, label)
+                document.setFillColor(ACCENT)
+                document.setFont("Helvetica-Bold", 13)
+                document.drawRightString(lane_x + lane_width - 7, lane_y - 20, f"{value:.1f}%")
+
+            alert = analysis.alerts[0] if analysis.alerts else (
+                "Aucune faiblesse laterale critique detectee sur les donnees disponibles."
+            )
+            alert_y = y + 112
+            alert_color = colors.HexColor("#7F1D1D") if analysis.alerts else colors.HexColor("#173C25")
+            document.setFillColor(alert_color)
+            document.roundRect(x + 18, alert_y, box_width - 36, 42, 5, fill=1, stroke=0)
             document.setFillColor(WHITE)
-            document.setFont("Helvetica", 9.5)
-            lines = self._wrap_text(insight, box_width - 64, "Helvetica", 9.5)
-            for line in lines[:2]:
-                document.drawString(x + 36, cursor_y, line)
-                cursor_y -= 13
-            cursor_y -= 22
+            document.setFont("Helvetica-Bold", 8)
+            lines = self._wrap_text(self._pdf_safe(alert), box_width - 58, "Helvetica-Bold", 8)
+            for index, line in enumerate(lines[:2]):
+                document.drawString(x + 29, alert_y + 25 - index * 12, line)
+
+            telemetry = analysis.player_telemetry[:3]
+            telemetry_y = y + 62
+            document.setFillColor(colors.HexColor("#A7F3D0"))
+            document.setFont("Helvetica-Bold", 6.5)
+            document.drawString(x + 18, telemetry_y + 28, "TELEMETRIE JOUEUR")
+            if telemetry:
+                column_width = (box_width - 52) / 3
+                for index, player in enumerate(telemetry):
+                    player_x = x + 18 + index * (column_width + 8)
+                    document.setFillColor(WHITE)
+                    document.setFont("Helvetica-Bold", 7)
+                    document.drawString(
+                        player_x,
+                        telemetry_y + 14,
+                        self._truncate(self._pdf_safe(player.player_name), 21),
+                    )
+                    document.setFillColor(colors.HexColor("#86A991"))
+                    document.setFont("Helvetica", 6.5)
+                    document.drawString(
+                        player_x,
+                        telemetry_y + 2,
+                        f"{player.distance_km:.2f} km  |  Vmax {player.max_speed_kmh:.1f} km/h",
+                    )
+            else:
+                document.setFillColor(colors.HexColor("#86A991"))
+                document.setFont("Helvetica", 7)
+                document.drawString(x + 18, telemetry_y + 10, "Aucune telemetrie joueur disponible.")
 
         document.setStrokeColor(colors.HexColor("#28643B"))
         document.line(x + 18, y + 25, x + box_width - 18, y + 25)
@@ -318,6 +372,27 @@ class MatchReportGenerator:
         document.setFont("Helvetica", 6.5)
         document.drawString(x + 18, y + 12, "Rapport genere automatiquement par StatX Analytics")
         document.drawRightString(x + box_width - 18, y + 12, "CONFIDENTIEL - STAFF TECHNIQUE")
+
+    def _draw_legacy_insights(
+        self,
+        document: canvas.Canvas,
+        insights: Sequence[str],
+        x: float,
+        y: float,
+        box_width: float,
+        box_height: float,
+    ) -> None:
+        cursor_y = y + box_height - 68
+        for insight in list(insights)[:3]:
+            document.setFillColor(ACCENT)
+            document.circle(x + 23, cursor_y + 2, 3, fill=1, stroke=0)
+            document.setFillColor(WHITE)
+            document.setFont("Helvetica", 9.5)
+            lines = self._wrap_text(self._pdf_safe(insight), box_width - 64, "Helvetica", 9.5)
+            for line in lines[:2]:
+                document.drawString(x + 36, cursor_y, line)
+                cursor_y -= 13
+            cursor_y -= 22
 
     @staticmethod
     def _draw_fitted_centered_text(
@@ -355,4 +430,12 @@ class MatchReportGenerator:
     @staticmethod
     def _truncate(text: str, limit: int) -> str:
         return text if len(text) <= limit else f"{text[: limit - 3]}..."
+
+    @staticmethod
+    def _pdf_safe(text: str) -> str:
+        return (
+            text.replace("⚠️", "ALERTE -")
+            .replace("⚠", "ALERTE -")
+            .replace("’", "'")
+        )
 

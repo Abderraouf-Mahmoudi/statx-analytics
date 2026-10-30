@@ -1,4 +1,5 @@
 import { resolveMediaUrl } from "../services/api";
+import TacticalInsights from "./TacticalInsights";
 
 
 function SectionHeading({ eyebrow, title, detail }) {
@@ -39,17 +40,7 @@ function StatisticsTable({ home, away }) {
 }
 
 
-function TacticalInsights({ insights, keyPlayer }) {
-  return (
-    <section className="rounded-2xl border border-emerald-400/15 bg-[#0D2418] p-5 shadow-card">
-      <SectionHeading eyebrow="Moteur StatX" title="Avis & Alertes Tactiques StatX" detail={keyPlayer ? `Joueur clé · ${keyPlayer}` : "Synthèse automatisée"} />
-      <div className="space-y-3">{insights.map((insight, index) => <div key={`${index}-${insight}`} className="flex gap-3 rounded-xl border border-emerald-400/10 bg-emerald-950/30 px-4 py-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-400/10 text-[11px] font-black text-emerald-400">{index + 1}</span><p className="text-sm leading-6 text-emerald-50/90">{insight}</p></div>)}</div>
-    </section>
-  );
-}
-
-
-export default function MatchDashboard({ analytics }) {
+export default function MatchDashboard({ analytics, onDownload, pdfLoading }) {
   return (
     <div className="space-y-6">
       <section>
@@ -62,7 +53,7 @@ export default function MatchDashboard({ analytics }) {
       </section>
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <StatisticsTable home={analytics.home} away={analytics.away} />
-        <TacticalInsights insights={analytics.tactical_insights || []} keyPlayer={analytics.key_player} />
+        <TacticalInsights matchId={analytics.match_id} onDownload={onDownload} pdfLoading={pdfLoading} />
       </div>
     </div>
   );

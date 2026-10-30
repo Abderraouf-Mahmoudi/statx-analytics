@@ -6,7 +6,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -21,8 +21,12 @@ from app.api.schemas import (
     TeamCreate,
     TeamMetrics,
     TeamRead,
+    TrackingIngestRequest,
+    TrackingIngestResponse,
+    TacticalAnalysisResponse,
 )
 from app.core.analytics import generate_heatmap, generate_pass_map, generate_shot_map
+from app.core.tactical_engine import analyze_match_tactics
 from app.core.pdf_generator import (
     MatchReportData,
     MatchReportGenerator,
@@ -30,7 +34,9 @@ from app.core.pdf_generator import (
     ReportVisuals,
 )
 from app.db.database import get_db
-from app.db.models import Event, Match, Player, Team
+from app.db.ingestion import bulk_insert_tracking
+from app.db.models import Event, Match, Player, Team, TrackingPoint
+from app.core.vision import read_tracking_job
 
 
 router = APIRouter(prefix="/api")
@@ -124,6 +130,116 @@ def create_events(
     for record in records:
         db.refresh(record)
     return records
+
+
+def _tracking_rows(payload: TrackingIngestRequest) -> list[dict[str, object]]:
+    if payload.tracking_data is not None:
+        return [point.model_dump() for point in payload.tracking_data]
+
+    job = read_tracking_job(payload.job_id or "")
+    if job is None:
+        raise HTTPException(status_code=404, detail="Vision tracking job not found")
+    if job.get("status") != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Vision tracking job is {job.get('status', 'not ready')}",
+        )
+    result = job.get("result")
+    trajectories = result.get("trajectories") if isinstance(result, dict) else None
+    if not isinstance(trajectories, list) or not trajectories:
+        raise HTTPException(status_code=422, detail="Vision job contains no player trajectories")
+    return [dict(point) for point in trajectories if isinstance(point, dict)]
+
+
+@router.post(
+    "/matches/{match_id}/ingest-tracking",
+    response_model=TrackingIngestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def ingest_match_tracking(
+    match_id: int,
+    payload: TrackingIngestRequest,
+    db: Session = Depends(get_db),
+) -> TrackingIngestResponse:
+    """Persist Module 2 trajectories with optional tracker-to-player mapping."""
+    match = db.get(Match, match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    rows = _tracking_rows(payload)
+    for row in rows:
+        tracker_id = int(row["player_id"])
+        row["player_id"] = payload.player_mapping.get(tracker_id, tracker_id)
+
+    player_ids = {int(row["player_id"]) for row in rows}
+    players = db.scalars(select(Player).where(Player.id.in_(player_ids))).all()
+    if {player.id for player in players} != player_ids:
+        raise HTTPException(
+            status_code=422,
+            detail="Map every ByteTrack ID to an existing database player",
+        )
+    match_team_ids = {match.home_team_id, match.away_team_id}
+    if any(player.team_id not in match_team_ids for player in players):
+        raise HTTPException(status_code=422, detail="Every player must belong to this match")
+
+    try:
+        result = bulk_insert_tracking(match_id, rows, db=db)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Unable to ingest tracking points") from exc
+
+    return TrackingIngestResponse(
+        match_id=match_id,
+        status="completed",
+        points_ingested=result.points_ingested,
+        total_points=result.total_points,
+        progress=100,
+        duration_ms=result.duration_ms,
+    )
+
+
+@router.get("/matches/{match_id}/tracking-status", response_model=TrackingIngestResponse)
+def get_tracking_ingestion_status(
+    match_id: int,
+    db: Session = Depends(get_db),
+) -> TrackingIngestResponse:
+    """Expose the persisted coordinate count for the frontend pipeline card."""
+    if db.get(Match, match_id) is None:
+        raise HTTPException(status_code=404, detail="Match not found")
+    total = int(
+        db.scalar(
+            select(func.count(TrackingPoint.id)).where(TrackingPoint.match_id == match_id)
+        )
+        or 0
+    )
+    return TrackingIngestResponse(
+        match_id=match_id,
+        status="completed" if total else "waiting",
+        points_ingested=total,
+        total_points=total,
+        progress=100 if total else 0,
+        duration_ms=0,
+    )
+
+
+@router.get(
+    "/matches/{match_id}/tactical-insights",
+    response_model=TacticalAnalysisResponse,
+)
+def get_tactical_insights(
+    match_id: int,
+    team_id: int | None = Query(default=None, gt=0),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Return lane occupation, automatic alerts, and player telemetry."""
+    try:
+        return analyze_match_tactics(match_id, team_id, db=db).to_dict()
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/matches/{match_id}/analytics", response_model=AnalyticsResponse)
@@ -266,6 +382,11 @@ def download_match_report(
             key_player_name,
             player_event_counts.get(key_player_id, 0),
         )
+        tactical_analysis = analyze_match_tactics(
+            match.id,
+            match.home_team_id,
+            db=db,
+        )
         report_data = MatchReportData(
             match_id=match.id,
             match_date=match.match_date,
@@ -286,6 +407,7 @@ def download_match_report(
             ),
             key_player_name=key_player_name,
             tactical_insights=insights,
+            tactical_analysis=tactical_analysis,
         )
         report_path = MatchReportGenerator(EXPORT_ROOT).generate(
             report_data,

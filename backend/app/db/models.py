@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -43,6 +43,10 @@ class Player(Base):
 
     team: Mapped[Team] = relationship(back_populates="players")
     events: Mapped[list["Event"]] = relationship(back_populates="player")
+    tracking_points: Mapped[list["TrackingPoint"]] = relationship(
+        back_populates="player",
+        cascade="all, delete-orphan",
+    )
 
 
 class Match(Base):
@@ -65,6 +69,10 @@ class Match(Base):
     home_team: Mapped[Team] = relationship(foreign_keys=[home_team_id])
     away_team: Mapped[Team] = relationship(foreign_keys=[away_team_id])
     events: Mapped[list["Event"]] = relationship(
+        back_populates="match",
+        cascade="all, delete-orphan",
+    )
+    tracking_points: Mapped[list["TrackingPoint"]] = relationship(
         back_populates="match",
         cascade="all, delete-orphan",
     )
@@ -99,4 +107,33 @@ class Event(Base):
 
     match: Mapped[Match] = relationship(back_populates="events")
     player: Mapped[Player] = relationship(back_populates="events")
+
+
+class TrackingPoint(Base):
+    """One metric pitch coordinate produced by the computer-vision pipeline."""
+
+    __tablename__ = "tracking_points"
+    __table_args__ = (
+        UniqueConstraint(
+            "match_id",
+            "player_id",
+            "timestamp_seconds",
+            name="uq_tracking_match_player_timestamp",
+        ),
+        CheckConstraint("timestamp_seconds >= 0", name="ck_tracking_timestamp"),
+        CheckConstraint("x_coord >= 0 AND x_coord <= 105", name="ck_tracking_x"),
+        CheckConstraint("y_coord >= 0 AND y_coord <= 68", name="ck_tracking_y"),
+        CheckConstraint("speed_kmh >= 0", name="ck_tracking_speed"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"), index=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
+    timestamp_seconds: Mapped[float] = mapped_column(Float)
+    x_coord: Mapped[float] = mapped_column(Float)
+    y_coord: Mapped[float] = mapped_column(Float)
+    speed_kmh: Mapped[float] = mapped_column(Float, default=0.0)
+
+    match: Mapped[Match] = relationship(back_populates="tracking_points")
+    player: Mapped[Player] = relationship(back_populates="tracking_points")
 

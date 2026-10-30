@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import LoadingSpinner from "./components/LoadingSpinner";
+import DataPipelineStatus from "./components/DataPipelineStatus";
 import MatchDashboard from "./components/MatchDashboard";
 import TopBar from "./components/TopBar";
+import VideoPlayer from "./components/VideoPlayer";
 import {
   downloadMatchPdf,
   getMatchAnalytics,
@@ -43,6 +45,7 @@ function EmptyState() {
 
 
 export default function App() {
+  const [activeModule, setActiveModule] = useState("analytics");
   const [teams, setTeams] = useState([]);
   const [matches, setMatches] = useState([]);
   const [activeMatchId, setActiveMatchId] = useState("");
@@ -133,17 +136,27 @@ export default function App() {
         analytics={analytics}
         onDownload={handlePdfDownload}
         pdfLoading={pdfLoading}
+        activeModule={activeModule}
       />
       {error && <ErrorBanner message={error} onDismiss={() => setError("")} />}
       <main className="relative mx-auto max-w-[1500px] px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-        {!matches.length ? (
+        <nav className="mb-6 flex w-full gap-2 overflow-x-auto rounded-xl border border-slate-800 bg-card p-1.5 sm:w-fit" aria-label="Modules StatX">
+          <button type="button" onClick={() => setActiveModule("analytics")} className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-bold transition ${activeModule === "analytics" ? "bg-emerald-500 text-emerald-950" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}>Dashboard Analytics</button>
+          <button type="button" onClick={() => setActiveModule("video")} className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-bold transition ${activeModule === "video" ? "bg-emerald-500 text-emerald-950" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}>Video Studio · Module 1</button>
+          <button type="button" onClick={() => setActiveModule("pipeline")} className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-bold transition ${activeModule === "pipeline" ? "bg-emerald-500 text-emerald-950" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}>Data Pipeline · Module 3</button>
+        </nav>
+        {activeModule === "pipeline" ? (
+          <DataPipelineStatus matchId={activeMatchId} />
+        ) : activeModule === "video" ? (
+          <VideoPlayer />
+        ) : !matches.length ? (
           <EmptyState />
         ) : analyticsLoading || !analytics ? (
           <div className="grid min-h-[55vh] place-items-center">
             <LoadingSpinner label="Calcul des métriques et génération des cartes…" size="large" />
           </div>
         ) : (
-          <MatchDashboard analytics={analytics} />
+          <MatchDashboard analytics={analytics} onDownload={handlePdfDownload} pdfLoading={pdfLoading} />
         )}
       </main>
     </div>

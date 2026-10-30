@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 
 class ORMModel(BaseModel):
@@ -118,4 +118,73 @@ class AnalyticsResponse(BaseModel):
     graphics: dict[str, str]
     tactical_insights: list[str]
     key_player: str | None = None
+
+
+class TrackingPointCreate(BaseModel):
+    player_id: int = Field(gt=0)
+    timestamp_seconds: float = Field(
+        ge=0,
+        validation_alias=AliasChoices("timestamp_seconds", "timestamp"),
+    )
+    x_coord: float = Field(
+        ge=0,
+        le=105,
+        validation_alias=AliasChoices("x_coord", "x"),
+    )
+    y_coord: float = Field(
+        ge=0,
+        le=68,
+        validation_alias=AliasChoices("y_coord", "y"),
+    )
+    speed_kmh: float | None = Field(default=None, ge=0)
+
+
+class TrackingIngestRequest(BaseModel):
+    job_id: str | None = Field(default=None, min_length=1)
+    tracking_data: list[TrackingPointCreate] | None = None
+    player_mapping: dict[int, int] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_source(self) -> "TrackingIngestRequest":
+        if (self.job_id is None) == (self.tracking_data is None):
+            raise ValueError("Provide exactly one of job_id or tracking_data")
+        if self.tracking_data is not None and not self.tracking_data:
+            raise ValueError("tracking_data cannot be empty")
+        return self
+
+
+class TrackingIngestResponse(BaseModel):
+    match_id: int
+    status: str
+    points_ingested: int
+    total_points: int
+    progress: int
+    duration_ms: float
+
+
+class LaneDistributionResponse(BaseModel):
+    left: float
+    center: float
+    right: float
+
+
+class PlayerTelemetryResponse(BaseModel):
+    player_id: int
+    player_name: str
+    team_id: int
+    distance_km: float
+    max_speed_kmh: float
+    samples: int
+
+
+class TacticalAnalysisResponse(BaseModel):
+    match_id: int
+    perspective_team_id: int
+    perspective_team_name: str
+    opponent_team_id: int
+    opponent_team_name: str
+    total_opponent_points: int
+    lane_distribution: LaneDistributionResponse
+    alerts: list[str]
+    player_telemetry: list[PlayerTelemetryResponse]
 

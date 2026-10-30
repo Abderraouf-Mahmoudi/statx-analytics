@@ -32,6 +32,8 @@ frontend/dist/
 # Large media files
 *.mp4
 *.avi
+*.pt
+*.onnx
 
 # Data and generated exports
 data/raw_videos/
