@@ -15,4 +15,13 @@ describe("API client", () => {
       headers: expect.objectContaining({ "x-csrf-token": "token-123" }),
     }));
   });
+  it("lets the browser set the multipart boundary for FormData", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const form = new FormData();
+    form.append("source", "gallery");
+    form.append("photo", new File(["portrait"], "player.png", { type: "image/png" }));
+    await request<{ ok: boolean }>("/players/p1/photo", { method: "POST", body: form });
+    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>;
+    expect(headers["content-type"]).toBeUndefined();
+  });
 });

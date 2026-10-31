@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { PitchInvariant } from "../../app/i18n";
-import { createPlayer, getRoster, getSeasons, getTeams, registerPlayer, type RosterEntry, type Season, type Team } from "./api";
+import { createPlayer, getRoster, getSeasons, getTeams, registerPlayer, uploadPlayerPhoto, type RosterEntry, type Season, type Team } from "./api";
 import { PlayerForm, type CreateRosterPayload } from "./PlayerForm";
 import { PlayerDetailPage } from "./PlayerDetailPage";
+import { PlayerCard } from "./PlayerCard";
 
 async function defaultLoad(): Promise<RosterEntry[]> {
   const [teams, seasons] = await Promise.all([getTeams(), getSeasons()]);
@@ -20,6 +21,7 @@ async function defaultCreateRosterEntry(payload: CreateRosterPayload): Promise<v
   const player = await createPlayer(payload.player);
   const { team_id, ...registration } = payload.registration;
   await registerPlayer(team_id, { ...registration, player_id: player.public_id });
+  if (payload.photo) await uploadPlayerPhoto(player.public_id, payload.photo.source, payload.photo.file);
 }
 
 export function RosterPage({ loadRoster = defaultLoad, loadContext = defaultLoadContext, createRosterEntry = defaultCreateRosterEntry }: {
@@ -49,7 +51,7 @@ export function RosterPage({ loadRoster = defaultLoad, loadContext = defaultLoad
     {editorOpen && context.data && !canCreate && <div className="empty-panel"><h2>Préparation du club requise</h2><p>Créez d’abord une saison et une équipe depuis l’accueil.</p><button className="touch-target secondary-action" onClick={() => setEditorOpen(false)}>Fermer</button></div>}
     {editorOpen && context.data && canCreate && <PlayerForm teams={context.data.teams} seasons={context.data.seasons} pending={saving} onCancel={() => setEditorOpen(false)} onSubmit={save} />}
     {selectedPlayerId && <PlayerDetailPage playerId={selectedPlayerId} onClose={() => setSelectedPlayerId(null)} />}
-    {query.isPending ? <p role="status">Chargement de l’effectif…</p> : query.isError ? <p role="alert">Impossible de charger l’effectif</p> : !query.data.length ? <div className="empty-panel"><h2>Aucun joueur inscrit</h2><p>Créez une identité joueur puis inscrivez-la dans une équipe et une saison.</p></div> : <div className="roster-list">{query.data.map((player) => <article key={player.player_id} className="player-row"><span className="shirt-number">{player.shirt_number ?? "—"}</span><div><strong>{player.first_name} {player.last_name}</strong><small>{player.position ?? "Poste à définir"}</small></div><span className={`status-badge ${player.publishable ? "success" : "danger"}`}>{player.publishable ? "Publiable" : "Publication bloquée"}</span><button className="touch-target secondary-action" onClick={() => setSelectedPlayerId(player.player_id)}>Gérer</button></article>)}</div>}
+    {query.isPending ? <p role="status">Chargement de l’effectif…</p> : query.isError ? <p role="alert">Impossible de charger l’effectif</p> : !query.data.length ? <div className="empty-panel"><h2>Aucun joueur inscrit</h2><p>Créez une identité joueur puis inscrivez-la dans une équipe et une saison.</p></div> : <div className="roster-card-grid">{query.data.map((player) => <PlayerCard key={player.player_id} player={player} onManage={() => setSelectedPlayerId(player.player_id)} />)}</div>}
     <PitchInvariant className="pitch-direction-marker" aria-label="Repère terrain invariant" />
   </section>;
 }
