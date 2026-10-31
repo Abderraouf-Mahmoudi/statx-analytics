@@ -15,6 +15,9 @@ def test_roster_routes_are_versioned_and_uuid_based() -> None:
         "/api/v1/teams/{team_id}/roster",
         "/api/v1/players/{player_id}/consents",
     }.issubset(paths)
+    route_methods = {(route.path, method) for route in create_app().routes if hasattr(route, "methods") for method in route.methods}
+    assert ("/api/v1/players/{player_id}", "GET") in route_methods
+    assert ("/api/v1/players/{player_id}/consents", "GET") in route_methods
 
 
 def test_browser_commands_never_accept_organization_identifiers() -> None:

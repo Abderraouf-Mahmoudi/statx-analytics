@@ -10,7 +10,7 @@ describe("API client", () => {
       new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } }),
     );
     await request<{ ok: boolean }>("/teams", { method: "POST", body: JSON.stringify({ name: "U17" }) });
-    expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/api/v1/teams", expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8000/api/v1/teams", expect.objectContaining({
       credentials: "include",
       headers: expect.objectContaining({ "x-csrf-token": "token-123" }),
     }));

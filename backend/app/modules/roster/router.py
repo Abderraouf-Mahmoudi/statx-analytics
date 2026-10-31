@@ -21,6 +21,8 @@ from app.modules.roster.service import (
     ConsentRequired,
     RosterConflict,
     create_player,
+    get_player,
+    list_consents,
     list_roster,
     record_consent,
     register_player,
@@ -30,6 +32,7 @@ from app.modules.roster.service import (
 
 router = APIRouter(tags=["roster"])
 editor = require_roles("admin", "analyst")
+reader = require_roles("admin", "analyst", "coach", "viewer")
 
 
 @router.post("/players", response_model=PlayerView, status_code=201)
@@ -38,6 +41,16 @@ def add_player(command: PlayerCommand, db: Session = Depends(get_db), actor: Act
     db.commit()
     db.refresh(player)
     return player
+
+
+@router.get("/players/{player_id}", response_model=PlayerView)
+def player_detail(player_id: str, db: Session = Depends(get_db), actor: Actor = Depends(reader)):
+    return get_player(db, actor.organization_id, player_id)
+
+
+@router.get("/players/{player_id}/consents", response_model=list[ConsentView])
+def player_consents(player_id: str, db: Session = Depends(get_db), actor: Actor = Depends(reader)):
+    return list_consents(db, actor.organization_id, player_id)
 
 
 @router.post("/teams/{team_id}/registrations", response_model=RegistrationView, status_code=201)

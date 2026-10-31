@@ -1,6 +1,6 @@
 import type { ProblemDetails } from "./types";
 
-const API_ROOT = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1";
+const API_ROOT = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api/v1";
 
 function cookie(name: string): string | undefined {
   const entry = document.cookie.split(";").map((value) => value.trim()).find((value) => value.startsWith(`${name}=`));

@@ -55,6 +55,15 @@ def create_player(session: Session, organization_id: int, command) -> Player:
     return player
 
 
+def get_player(session: Session, organization_id: int, player_public_id: str) -> Player:
+    return _scoped(session, Player, player_public_id, organization_id)
+
+
+def list_consents(session: Session, organization_id: int, player_public_id: str) -> list[Consent]:
+    player = _scoped(session, Player, player_public_id, organization_id)
+    return list(session.scalars(select(Consent).where(Consent.player_id == player.id).order_by(Consent.created_at.desc())))
+
+
 def register_player(
     session: Session, organization_id: int, team_public_id: str, command
 ) -> PlayerRegistration:

@@ -14,10 +14,23 @@ test("tablet roster keeps touch targets and RTL-safe pitch direction", async ({ 
     await page.getByRole("button", { name: "Se connecter" }).click();
   }
   await expect(page.getByRole("heading", { name: "Centre opérationnel StatX" })).toBeVisible();
+  await page.getByLabel("Nom de la saison").fill("2026/27");
+  await page.getByRole("button", { name: "Créer la saison" }).click();
+  await page.getByLabel("Nom de l’équipe").fill("U17");
+  await page.getByLabel("Catégorie").fill("academy");
+  await page.getByRole("button", { name: "Créer l’équipe" }).click();
   await page.getByRole("link", { name: "Effectif" }).click();
   await expect(page.getByRole("heading", { name: "Effectif" })).toBeVisible();
   const box = await page.getByRole("button", { name: "Ajouter un joueur" }).boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(48);
+  await page.getByRole("button", { name: "Ajouter un joueur" }).click();
+  await page.getByLabel("Prénom").fill("Amina");
+  await page.getByLabel("Nom", { exact: true }).fill("Ben Salah");
+  await page.getByLabel("Date de naissance").fill("2010-11-20");
+  await page.getByLabel("Poste principal").fill("CM");
+  await page.getByLabel("Numéro").fill("8");
+  await page.getByRole("button", { name: "Créer et inscrire" }).click();
+  await expect(page.getByText("Amina Ben Salah")).toBeVisible();
   await page.getByRole("button", { name: "Changer de langue" }).click();
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   await expect(page.getByLabel("Repère terrain invariant")).toHaveAttribute("dir", "ltr");
