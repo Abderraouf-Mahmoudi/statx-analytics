@@ -1,8 +1,7 @@
 """FastAPI entry point and application lifecycle for StatX Analytics."""
 
+import asyncio
 from contextlib import asynccontextmanager
-import os
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,52 +9,83 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router as api_router
 from app.api.video_routes import router as video_router
-from app.core.video_processor import ensure_video_directories
-from app.db.database import init_db
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-EXPORT_ROOT = PROJECT_ROOT / "data" / "exports"
-CORS_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173",
-    ).split(",")
-    if origin.strip()
-]
-
-
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    """Initialize persistent resources before accepting requests."""
-    EXPORT_ROOT.mkdir(parents=True, exist_ok=True)
-    init_db()
-    ensure_video_directories()
-    yield
-
-
-app = FastAPI(
-    title="StatX Analytics API",
-    description="API d'analyse tactique et de performance pour le football.",
-    version="0.5.0",
-    lifespan=lifespan,
+from app.api.problems import (
+    ProblemException,
+    authentication_exception_handler,
+    authorization_exception_handler,
+    csrf_exception_handler,
+    invalid_credentials_exception_handler,
+    not_found_exception_handler,
+    problem_exception_handler,
 )
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
+from app.api.v1.router import router as v1_router
+from app.config import Settings, get_settings
+from app.modules.identity.dependencies import (
+    AuthenticationRequired,
+    AuthorizationDenied,
+    CsrfRejected,
 )
-app.include_router(api_router)
-app.include_router(video_router)
-app.mount("/exports", StaticFiles(directory=EXPORT_ROOT), name="exports")
+from app.modules.identity.security import InvalidCredentials
+from app.modules.identity.service import ResourceNotFound
+from app.modules.integrations.worker import provider_worker_loop
+from app.modules.media.worker import media_worker_loop
 
 
-@app.get("/health", tags=["health"])
-async def health_check() -> dict[str, str]:
-    """Return the service health status."""
-    return {"status": "ok", "service": "statx-analytics-api"}
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """Create an independently configured StatX API instance."""
+    resolved = settings or get_settings()
+    export_root = resolved.data_root / "exports"
+    export_root.mkdir(parents=True, exist_ok=True)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        """Prepare local storage; schema changes are owned by Alembic."""
+        export_root.mkdir(parents=True, exist_ok=True)
+        stop = asyncio.Event()
+        worker = None
+        media_worker = asyncio.create_task(media_worker_loop(stop, resolved))
+        if resolved.api_football_key is not None:
+            worker = asyncio.create_task(provider_worker_loop(stop, resolved))
+        try:
+            yield
+        finally:
+            stop.set()
+            if worker is not None:
+                await worker
+            await media_worker
+
+    application = FastAPI(
+        title="StatX Analytics API",
+        description="API d'analyse tactique et de performance pour le football.",
+        version="0.7.0",
+        lifespan=lifespan,
+    )
+    application.state.settings = resolved
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=resolved.cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=["Content-Disposition"],
+    )
+    application.include_router(api_router)
+    application.include_router(video_router)
+    application.include_router(v1_router)
+    application.add_exception_handler(ProblemException, problem_exception_handler)
+    application.add_exception_handler(AuthenticationRequired, authentication_exception_handler)
+    application.add_exception_handler(AuthorizationDenied, authorization_exception_handler)
+    application.add_exception_handler(CsrfRejected, csrf_exception_handler)
+    application.add_exception_handler(ResourceNotFound, not_found_exception_handler)
+    application.add_exception_handler(InvalidCredentials, invalid_credentials_exception_handler)
+    application.mount("/exports", StaticFiles(directory=export_root), name="exports")
+
+    @application.get("/health", tags=["health"])
+    async def health_check() -> dict[str, str]:
+        return {"status": "ok", "service": "statx-analytics-api"}
+
+    return application
+
+
+app = create_app()
 

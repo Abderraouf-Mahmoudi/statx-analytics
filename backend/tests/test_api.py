@@ -1,13 +1,10 @@
 """Integration tests for SQLite, routes, metrics, and generated graphics."""
 
 import os
-import tempfile
 from pathlib import Path
-from uuid import uuid4
 
 
-TEST_DATABASE_PATH = Path(tempfile.gettempdir()) / f"statx_test_{uuid4().hex}.db"
-os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DATABASE_PATH.as_posix()}"
+TEST_DATABASE_PATH = Path(os.environ["STATX_TEST_DATABASE_PATH"])
 
 from sqlalchemy import inspect  # noqa: E402
 from pypdf import PdfReader  # noqa: E402

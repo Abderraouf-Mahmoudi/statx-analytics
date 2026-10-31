@@ -53,4 +53,12 @@ Thumbs.db
 .coverage
 htmlcov/
 coverage/
+frontend/test-results/
+frontend/playwright-report/
+
+# Superpowers visual brainstorming sessions
+.superpowers/
+
+# Local isolated Git worktrees
+.worktrees/
 

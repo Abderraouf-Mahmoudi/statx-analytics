@@ -1,0 +1,5 @@
+{
+  "brand": "Stat X — Football Data Lab",
+  "runtime": { "active": "Poste local actif", "local": "Données locales" },
+  "onboarding": { "club": "Choisir votre club", "manual": "Continuer sans import" }
+}
