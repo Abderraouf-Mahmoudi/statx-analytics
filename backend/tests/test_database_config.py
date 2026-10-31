@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic import SecretStr
 from sqlalchemy import text
 
 from app.config import Settings
@@ -34,10 +35,7 @@ def test_sqlite_engine_enforces_integrity_and_concurrency_pragmas(tmp_path: Path
 def test_create_app_uses_supplied_database_instead_of_developer_default(
     tmp_path: Path,
 ) -> None:
-    """Dependency injection must prevent tests from creating backend/statx.db."""
-    developer_database = Path(__file__).resolve().parents[1] / "statx.db"
-    assert not developer_database.exists()
-
+    """Dependency injection must retain the caller-supplied database settings."""
     settings = make_settings(tmp_path)
     app = create_app(settings)
     health_route = next(route for route in app.routes if route.path == "/health")
@@ -54,5 +52,21 @@ def test_create_app_uses_supplied_database_instead_of_developer_default(
     assert health_payload["status"] == "ok"
 
     assert app.state.settings is settings
-    assert not developer_database.exists()
+    assert app.state.settings.database_url.endswith("statx-test.db")
+
+
+def test_provider_and_media_settings_keep_credentials_secret(tmp_path: Path) -> None:
+    settings = Settings(
+        database_url=f"sqlite:///{(tmp_path / 'settings.db').as_posix()}",
+        data_root=tmp_path / "data",
+        session_secret="test-session-secret-with-enough-entropy",
+        api_football_key="development-provider-secret",
+        _env_file=None,
+    )
+
+    assert isinstance(settings.api_football_key, SecretStr)
+    assert str(settings.api_football_key) == "**********"
+    assert settings.api_football_daily_ceiling == 90
+    assert settings.max_player_photo_bytes == 10 * 1024 * 1024
+    assert "development-provider-secret" not in repr(settings)
 

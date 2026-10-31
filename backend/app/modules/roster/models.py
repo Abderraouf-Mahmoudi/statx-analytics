@@ -42,6 +42,18 @@ class Player(Base):
     jersey_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     position: Mapped[str] = mapped_column(String(50))
     preferred_foot: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    source: Mapped[str] = mapped_column(String(24), default="manual")
+    provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    provider_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    provider_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    nationality: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    height_cm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    weight_kg: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    provider_photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    local_override: Mapped[bool] = mapped_column(Boolean, default=False)
+    provider_absent: Mapped[bool] = mapped_column(Boolean, default=False)
 
     team: Mapped["Team | None"] = relationship(back_populates="players")
     events: Mapped[list["Event"]] = relationship(back_populates="player")

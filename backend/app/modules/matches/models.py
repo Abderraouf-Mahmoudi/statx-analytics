@@ -30,6 +30,11 @@ class Match(Base):
     away_score: Mapped[int] = mapped_column(Integer, default=0)
     competition: Mapped[str] = mapped_column(String(120))
     status: Mapped[str] = mapped_column(String(20), default="draft")
+    provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    provider_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    provider_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     home_team: Mapped["Team"] = relationship(foreign_keys=[home_team_id])
     away_team: Mapped["Team"] = relationship(foreign_keys=[away_team_id])
