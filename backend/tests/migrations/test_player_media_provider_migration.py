@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import sqlite3
+from uuid import uuid4
 
 from tests.factories import create_legacy_database
 from tests.migrations.test_foundation_migration import table_names, upgrade_database
@@ -69,4 +70,23 @@ def test_upgrade_preserves_release_one_rows(tmp_path: Path) -> None:
             21,
             "manual",
         )
+
+
+def test_team_names_are_unique_per_organization_not_globally(tmp_path: Path) -> None:
+    database = tmp_path / "organization-team-names.db"
+    upgrade_database(database)
+    with sqlite3.connect(database) as connection:
+        for name in ("First", "Second"):
+            connection.execute(
+                "INSERT INTO organizations (public_id,name,default_locale,timezone,created_at,updated_at) VALUES (?,?,?,?,?,?)",
+                (str(uuid4()), name, "fr", "Africa/Tunis", "2026-11-01", "2026-11-01"),
+            )
+        organizations = [row[0] for row in connection.execute("SELECT id FROM organizations ORDER BY id")]
+        for organization_id in organizations:
+            connection.execute(
+                "INSERT INTO teams (public_id,organization_id,name,source,created_at,updated_at) VALUES (?,?,?,?,?,?)",
+                (str(uuid4()), organization_id, "Espérance ST", "manual", "2026-11-01", "2026-11-01"),
+            )
+        connection.commit()
+        assert connection.execute("SELECT COUNT(*) FROM teams WHERE name='Espérance ST'").fetchone()[0] == 2
 

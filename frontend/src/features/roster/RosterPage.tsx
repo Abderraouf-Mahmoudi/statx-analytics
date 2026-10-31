@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { PitchInvariant } from "../../app/i18n";
-import { createPlayer, getRoster, getSeasons, getTeams, registerPlayer, uploadPlayerPhoto, type RosterEntry, type Season, type Team } from "./api";
+import { getRoster, getSeasons, getTeams, type RosterEntry, type Season, type Team } from "./api";
 import { PlayerForm, type CreateRosterPayload } from "./PlayerForm";
 import { PlayerDetailPage } from "./PlayerDetailPage";
 import { PlayerCard } from "./PlayerCard";
+import { createRosterEntry as defaultCreateRosterEntry } from "./rosterWorkflow";
 
 async function defaultLoad(): Promise<RosterEntry[]> {
   const [teams, seasons] = await Promise.all([getTeams(), getSeasons()]);
@@ -17,17 +18,10 @@ async function defaultLoadContext(): Promise<{ teams: Team[]; seasons: Season[] 
   return { teams, seasons };
 }
 
-async function defaultCreateRosterEntry(payload: CreateRosterPayload): Promise<void> {
-  const player = await createPlayer(payload.player);
-  const { team_id, ...registration } = payload.registration;
-  await registerPlayer(team_id, { ...registration, player_id: player.public_id });
-  if (payload.photo) await uploadPlayerPhoto(player.public_id, payload.photo.source, payload.photo.file);
-}
-
 export function RosterPage({ loadRoster = defaultLoad, loadContext = defaultLoadContext, createRosterEntry = defaultCreateRosterEntry }: {
   loadRoster?: () => Promise<RosterEntry[]>;
   loadContext?: () => Promise<{ teams: Team[]; seasons: Season[] }>;
-  createRosterEntry?: (payload: CreateRosterPayload) => Promise<void>;
+  createRosterEntry?: (payload: CreateRosterPayload) => Promise<unknown>;
 }) {
   const queryClient = useQueryClient();
   const [editorOpen, setEditorOpen] = useState(false);

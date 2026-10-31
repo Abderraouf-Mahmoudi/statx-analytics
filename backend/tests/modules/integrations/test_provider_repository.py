@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.db.model_registry import Base
-from app.modules.integrations.api_football import ProviderEnvelope
+from app.modules.integrations.api_football import ProviderEnvelope, ProviderUnavailable
 from app.modules.integrations.repository import ProviderRepository, QuotaReserved
 
 
@@ -71,3 +71,17 @@ def test_provider_remaining_header_is_retained(session: Session) -> None:
     repository.cached_request("/leagues", {"country": "Tunisia"}, timedelta(days=7), now=now)
     session.commit()
     assert repository.quota_snapshot(now=now).remaining == 73
+
+
+def test_failed_remote_call_still_consumes_persisted_quota(session: Session) -> None:
+    class FailingClient:
+        def get(self, endpoint, params):
+            raise ProviderUnavailable("sanitized failure")
+
+    now = datetime(2026, 11, 1, 12, tzinfo=timezone.utc)
+    repository = ProviderRepository(session, FailingClient(), daily_ceiling=90)
+    with pytest.raises(ProviderUnavailable):
+        repository.cached_request("/teams", {"league": 202}, timedelta(days=1), now=now)
+    session.rollback()
+    recreated = ProviderRepository(session, FakeClient(), daily_ceiling=90)
+    assert recreated.quota_snapshot(now=now).calls_used == 1

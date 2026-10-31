@@ -17,18 +17,29 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    team_unique_constraints = {
+        constraint["name"]
+        for constraint in sa.inspect(op.get_bind()).get_unique_constraints("teams")
+        if constraint["name"]
+    }
+
     with op.batch_alter_table("seasons") as batch:
         batch.add_column(sa.Column("provider", sa.String(40), nullable=True))
         batch.add_column(sa.Column("competition_provider_id", sa.String(80), nullable=True))
         batch.add_column(sa.Column("season_year", sa.Integer(), nullable=True))
 
-    with op.batch_alter_table("teams") as batch:
+    with op.batch_alter_table(
+        "teams", naming_convention={"uq": "uq_%(table_name)s_%(column_0_name)s"}
+    ) as batch:
+        if "uq_teams_name" in team_unique_constraints:
+            batch.drop_constraint("uq_teams_name", type_="unique")
         batch.add_column(sa.Column("source", sa.String(24), nullable=False, server_default="manual"))
         batch.add_column(sa.Column("provider", sa.String(40), nullable=True))
         batch.add_column(sa.Column("provider_id", sa.String(80), nullable=True))
         batch.add_column(sa.Column("provider_updated_at", sa.DateTime(timezone=True), nullable=True))
         batch.add_column(sa.Column("logo_source_url", sa.String(500), nullable=True))
         batch.add_column(sa.Column("logo_local_path", sa.String(500), nullable=True))
+        batch.create_unique_constraint("uq_teams_org_name", ["organization_id", "name"])
         batch.create_unique_constraint("uq_teams_org_provider_id", ["organization_id", "provider", "provider_id"])
 
     with op.batch_alter_table("organizations") as batch:

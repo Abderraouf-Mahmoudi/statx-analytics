@@ -63,6 +63,18 @@ def test_uploaded_photo_is_persisted_processed_and_scoped(tmp_path) -> None:
             pass
         else:
             raise AssertionError("Cross-organization photo access was not hidden")
+        original_path = service.data_root / photo.original_path
+        cutout_path = service.data_root / photo.cutout_path
+        service.delete_current(first.id, player.public_id)
+        session.commit()
+        assert not original_path.exists()
+        assert not cutout_path.exists()
+        try:
+            service.current_photo(first.id, player.public_id)
+        except ResourceNotFound:
+            pass
+        else:
+            raise AssertionError("Deleted photo remained addressable")
     finally:
         session.close()
 

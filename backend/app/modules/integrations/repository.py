@@ -110,6 +110,10 @@ class ProviderRepository:
         quota.calls_used += 1
         quota.updated_at = moment
         self.session.flush()
+        # A failed provider response can still consume the remote quota. Persist
+        # the reservation before the network call so a caller rollback cannot
+        # accidentally grant the call back.
+        self.session.commit()
 
         envelope = self.client.get(endpoint, normalized)
         if envelope.remaining_quota is not None:

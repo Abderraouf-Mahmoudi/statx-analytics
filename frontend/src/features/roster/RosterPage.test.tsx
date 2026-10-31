@@ -45,4 +45,16 @@ describe("RosterPage", () => {
       registration: expect.objectContaining({ shirt_number: 8 }),
     }));
   });
+  it("keeps the created roster entry when optional portrait upload fails", async () => {
+    const createPlayer = vi.fn().mockResolvedValue({ public_id: "p-created" });
+    const registerPlayer = vi.fn().mockResolvedValue(undefined);
+    const uploadPhoto = vi.fn().mockRejectedValue(new Error("segmentation unavailable"));
+    const { createRosterEntry } = await import("./rosterWorkflow");
+    await expect(createRosterEntry({
+      player: { first_name: "Amina", last_name: "Ben", primary_position: "CM" },
+      registration: { team_id: "team", season_id: "season", shirt_number: 8, position: "CM" },
+      photo: { source: "gallery", file: new File(["photo"], "p.png", { type: "image/png" }) },
+    }, { createPlayer, registerPlayer, uploadPhoto })).resolves.toEqual({ photoQueued: false });
+    expect(registerPlayer).toHaveBeenCalledOnce();
+  });
 });

@@ -204,6 +204,13 @@ class PlayerMediaService:
 
     def delete_current(self, organization_id: int, player_public_id: str) -> PlayerPhoto:
         photo = self.current_photo(organization_id, player_public_id)
+        for stored_path in (photo.original_path, photo.cutout_path):
+            if not stored_path:
+                continue
+            candidate = (self.data_root / stored_path).resolve()
+            if self.data_root not in candidate.parents:
+                raise ValueError("Unsafe stored media path")
+            candidate.unlink(missing_ok=True)
         self.session.delete(photo)
         self.session.flush()
         write_audit(
