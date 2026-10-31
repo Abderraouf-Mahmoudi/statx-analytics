@@ -1,5 +1,6 @@
 """FastAPI entry point and application lifecycle for StatX Analytics."""
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -26,6 +27,7 @@ from app.modules.identity.dependencies import (
 )
 from app.modules.identity.security import InvalidCredentials
 from app.modules.identity.service import ResourceNotFound
+from app.modules.integrations.worker import provider_worker_loop
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -38,7 +40,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(_: FastAPI):
         """Prepare local storage; schema changes are owned by Alembic."""
         export_root.mkdir(parents=True, exist_ok=True)
-        yield
+        stop = asyncio.Event()
+        worker = None
+        if resolved.api_football_key is not None:
+            worker = asyncio.create_task(provider_worker_loop(stop, resolved))
+        try:
+            yield
+        finally:
+            stop.set()
+            if worker is not None:
+                await worker
 
     application = FastAPI(
         title="StatX Analytics API",
