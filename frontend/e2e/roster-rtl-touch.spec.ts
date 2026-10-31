@@ -13,6 +13,10 @@ test("tablet roster keeps touch targets and RTL-safe pitch direction", async ({ 
     await page.getByLabel("Adresse e-mail").fill("admin@statx.local"); await page.getByLabel("Mot de passe").fill("A-secure-local-passphrase-2026");
     await page.getByRole("button", { name: "Se connecter" }).click();
   }
+  await page.getByRole("heading", { name: /Choisir votre club tunisien|Centre opérationnel StatX/ }).waitFor();
+  if (await page.getByRole("heading", { name: "Choisir votre club tunisien" }).isVisible().catch(() => false)) {
+    await page.getByRole("button", { name: "Continuer sans import" }).click();
+  }
   await expect(page.getByRole("heading", { name: "Centre opérationnel StatX" })).toBeVisible();
   await page.getByLabel("Nom de la saison").fill("2026/27");
   await page.getByRole("button", { name: "Créer la saison" }).click();
@@ -31,6 +35,8 @@ test("tablet roster keeps touch targets and RTL-safe pitch direction", async ({ 
   await page.getByLabel("Numéro").fill("8");
   await page.getByRole("button", { name: "Créer et inscrire" }).click();
   await expect(page.getByText("Amina Ben Salah")).toBeVisible();
+  const columns = await page.locator(".roster-card-grid").evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length);
+  expect(columns).toBe(3);
   await page.getByRole("button", { name: "Changer de langue" }).click();
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   await expect(page.getByLabel("Repère terrain invariant")).toHaveAttribute("dir", "ltr");

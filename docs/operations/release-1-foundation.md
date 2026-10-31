@@ -16,6 +16,19 @@ Copy-Item .env.example .env
 
 Modifier ensuite `backend/.env` et remplacer `SESSION_SECRET` par une valeur aléatoire d’au moins 32 caractères. Ne jamais versionner ce fichier.
 
+Pour activer l’import des clubs tunisiens, ajouter également la clé au fichier local ignoré :
+
+```dotenv
+API_FOOTBALL_BASE_URL=https://v3.football.api-sports.io
+API_FOOTBALL_KEY=remplacer-localement
+API_FOOTBALL_DAILY_CEILING=90
+API_FOOTBALL_MEDIA_HOSTS=media.api-sports.io
+```
+
+La clé ne doit jamais être saisie dans le frontend. Toute clé partagée dans une messagerie de développement doit être renouvelée depuis le tableau de bord API-Football avant une utilisation réelle.
+
+Le plan gratuit autorise 100 requêtes quotidiennes ; StatX bloque les appels non essentiels à 90 afin de préserver une réserve. Les clubs et effectifs sont mis en cache sept jours. L’ouverture d’une page ne déclenche pas automatiquement une synchronisation.
+
 Préparer la base et lancer l’API :
 
 ```powershell
@@ -33,6 +46,20 @@ npm.cmd run dev -- --host 127.0.0.1
 ```
 
 Ouvrir `http://127.0.0.1:5173`, saisir les informations du club puis créer le premier compte administrateur. Ce bootstrap n’est possible qu’une fois.
+
+## 1.1 Traitement local des portraits
+
+Le backend standard accepte et normalise les images. La suppression d’arrière-plan utilise un environnement média séparé :
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m pip install -r requirements-media.txt
+.\.venv\Scripts\python.exe scripts\prepare_media_model.py
+```
+
+Cette préparation télécharge explicitement le modèle humain dans `DATA_ROOT/models`. Elle doit être faite pendant l’installation, avec Internet, jamais juste avant un match. Les originaux et PNG transparents sont stockés sous `data/player_photos/` et doivent être inclus dans les sauvegardes chiffrées.
+
+Les photos API-Football portent le statut **Identification uniquement** jusqu’à validation des droits par le club. Une photo prise ou choisie par le club prend toujours priorité sur la photo fournisseur.
 
 ## 2. Migrations de base de données
 
@@ -107,6 +134,15 @@ Get-ChildItem dist -Recurse -Include *.html,*.css | Select-String -Pattern 'http
 
 Une sortie vide est attendue.
 
+Vérifier aussi qu’aucun secret fournisseur n’a été suivi par Git :
+
+```powershell
+git grep -n "API_FOOTBALL_KEY=" -- ':!backend/.env.example'
+git status --short
+```
+
+La première commande ne doit afficher aucune valeur et `.env`, `data/player_photos`, les modèles ONNX, bases SQLite, WAL/SHM et dossiers `.run` ne doivent jamais être ajoutés au commit.
+
 ## 6. Dépannage Windows
 
 ### `Activate.ps1` ou `npm.ps1` est bloqué
@@ -124,6 +160,14 @@ Vérifier que l’installation a utilisé le Python de l’environnement :
 ### Base verrouillée
 
 S’assurer qu’une seule instance d’administration est active, attendre la fin des écritures et conserver `SQLITE_BUSY_TIMEOUT_MS=5000` ou une valeur supérieure. Ne pas synchroniser la base SQLite active avec un outil de cloud drive.
+
+### Synchronisation fournisseur échouée ou quota réservé
+
+Les données SQLite déjà importées restent disponibles. Consulter l’état de synchronisation dans l’onboarding, attendre la remise à zéro du quota ou relancer explicitement plus tard. Ne pas augmenter le plafond au-delà de 90 avec un abonnement gratuit. Un joueur absent de la dernière réponse est marqué comme absent ; il n’est pas supprimé.
+
+### Portrait bloqué en traitement
+
+Vérifier que `requirements-media.txt` est installé et que `prepare_media_model.py` a réussi. L’original normalisé reste conservé si la segmentation échoue. Réessayer avec une photo plus nette, sans réinstaller l’ensemble du backend.
 
 ### Le frontend ne joint pas l’API
 
