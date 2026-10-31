@@ -6,6 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.modules.identity.service import ResourceNotFound
+from app.modules.media.models import PlayerPhoto
 from app.modules.organizations.models import Season, Team
 from app.modules.platform.audit import write_audit
 from app.modules.roster.models import Consent, Player, PlayerRegistration
@@ -190,6 +191,14 @@ def list_roster(
         active_consent = session.scalar(
             select(Consent.id).where(Consent.player_id == player.id, Consent.status == "active")
         )
+        photo = session.scalar(
+            select(PlayerPhoto)
+            .where(PlayerPhoto.player_id == player.id)
+            .order_by(
+                (PlayerPhoto.source.in_(["camera", "gallery"])).desc(),
+                PlayerPhoto.created_at.desc(),
+            )
+        )
         result.append(
             RosterItem(
                 player_id=player.public_id,
@@ -198,6 +207,11 @@ def list_roster(
                 shirt_number=registration.shirt_number,
                 position=registration.position,
                 publishable=active_consent is not None,
+                preferred_foot=registration.preferred_foot or player.preferred_foot,
+                source=player.source,
+                provider_absent=player.provider_absent,
+                photo_status=photo.processing_status if photo else None,
+                photo_rights_status=photo.rights_status if photo else None,
             )
         )
     return result

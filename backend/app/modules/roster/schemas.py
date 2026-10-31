@@ -68,4 +68,9 @@ class RosterItem(BaseModel):
     shirt_number: int | None
     position: str | None
     publishable: bool
+    preferred_foot: str | None = None
+    source: str = "manual"
+    provider_absent: bool = False
+    photo_status: str | None = None
+    photo_rights_status: str | None = None
 

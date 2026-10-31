@@ -28,6 +28,7 @@ from app.modules.identity.dependencies import (
 from app.modules.identity.security import InvalidCredentials
 from app.modules.identity.service import ResourceNotFound
 from app.modules.integrations.worker import provider_worker_loop
+from app.modules.media.worker import media_worker_loop
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -42,6 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         export_root.mkdir(parents=True, exist_ok=True)
         stop = asyncio.Event()
         worker = None
+        media_worker = asyncio.create_task(media_worker_loop(stop, resolved))
         if resolved.api_football_key is not None:
             worker = asyncio.create_task(provider_worker_loop(stop, resolved))
         try:
@@ -50,6 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             stop.set()
             if worker is not None:
                 await worker
+            await media_worker
 
     application = FastAPI(
         title="StatX Analytics API",
