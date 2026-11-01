@@ -6,6 +6,8 @@ export interface SetupClubCatalog {
   stale: boolean;
   cache_age_seconds?: number | null;
   quota?: { calls_used: number; remaining: number };
+  historical_fallback: boolean;
+  historical_season?: number | null;
 }
 
 export const getSetupProviderCatalog = () => request<SetupClubCatalog>("/setup/provider-catalog");
