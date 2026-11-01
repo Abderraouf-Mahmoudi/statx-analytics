@@ -6,6 +6,7 @@ import pytest
 from app.config import Settings
 from app.modules.integrations.api_football import (
     ApiFootballClient,
+    ProviderSeasonRestricted,
     ProviderUnavailable,
 )
 
@@ -71,5 +72,33 @@ def test_client_rejects_provider_error_envelope_and_redacts_key(tmp_path) -> Non
     )
     with pytest.raises(ProviderUnavailable) as raised:
         client.get("/teams", {})
+    assert type(raised.value) is ProviderUnavailable
+    assert "provider-test-secret" not in repr(raised.value)
+
+
+def test_client_classifies_free_plan_season_restriction_without_exposing_provider_text(tmp_path) -> None:
+    provider_text = "Free plans do not have access to this season, try from 2022 to 2024."
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "get": "teams",
+                "parameters": {"league": "202", "season": "2026"},
+                "errors": {"plan": provider_text},
+                "results": 0,
+                "paging": {"current": 1, "total": 1},
+                "response": [],
+            },
+        )
+
+    client = ApiFootballClient(
+        settings(tmp_path), http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    with pytest.raises(ProviderSeasonRestricted) as raised:
+        client.get("/teams", {"league": 202, "season": 2026})
+
+    assert provider_text not in str(raised.value)
     assert "provider-test-secret" not in repr(raised.value)
 

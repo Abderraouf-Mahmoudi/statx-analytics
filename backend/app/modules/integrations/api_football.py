@@ -20,6 +20,20 @@ class ProviderUnavailable(RuntimeError):
     """Sanitized provider communication or envelope failure."""
 
 
+class ProviderSeasonRestricted(ProviderUnavailable):
+    """Raised when the configured plan cannot access the requested season."""
+
+
+def _is_season_plan_restriction(errors: object) -> bool:
+    if not isinstance(errors, Mapping):
+        return False
+    message = errors.get("plan")
+    if not isinstance(message, str):
+        return False
+    normalized = message.casefold()
+    return "do not have access to this season" in normalized and "try from" in normalized
+
+
 @dataclass(frozen=True)
 class ProviderEnvelope:
     response: list[dict[str, Any]]
@@ -75,7 +89,12 @@ class ApiFootballClient:
             payload = response.json()
         except ValueError as exc:
             raise ProviderUnavailable("API-Football returned invalid JSON") from exc
-        if not isinstance(payload, dict) or payload.get("errors"):
+        if not isinstance(payload, dict):
+            raise ProviderUnavailable("API-Football returned an error envelope")
+        errors = payload.get("errors")
+        if errors:
+            if _is_season_plan_restriction(errors):
+                raise ProviderSeasonRestricted("API-Football plan does not include this season")
             raise ProviderUnavailable("API-Football returned an error envelope")
         items = payload.get("response")
         paging = payload.get("paging") or {}
