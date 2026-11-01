@@ -75,6 +75,8 @@ class ClubCatalog(BaseModel):
     stale: bool = False
     cache_age_seconds: int | None = None
     quota: "ProviderQuotaSummary"
+    historical_fallback: bool = False
+    historical_season: int | None = None
 
 
 class ProviderQuotaSummary(BaseModel):

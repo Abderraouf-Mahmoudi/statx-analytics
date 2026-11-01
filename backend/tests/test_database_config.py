@@ -67,6 +67,7 @@ def test_provider_and_media_settings_keep_credentials_secret(tmp_path: Path) -> 
     assert isinstance(settings.api_football_key, SecretStr)
     assert str(settings.api_football_key) == "**********"
     assert settings.api_football_daily_ceiling == 90
+    assert settings.api_football_free_plan_fallback_season == 2024
     assert settings.max_player_photo_bytes == 10 * 1024 * 1024
     assert "development-provider-secret" not in repr(settings)
 

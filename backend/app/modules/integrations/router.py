@@ -91,7 +91,10 @@ def tunisian_clubs(
 ) -> ClubCatalog:
     repository = _repository(db, settings)
     try:
-        catalog = TunisianClubCatalogService(repository).current_catalog()
+        catalog = TunisianClubCatalogService(
+            repository,
+            historical_fallback_season=settings.api_football_free_plan_fallback_season,
+        ).current_catalog()
         db.commit()
         return catalog
     except CatalogRefreshInProgress as exc:

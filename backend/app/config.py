@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     api_football_daily_ceiling: int = Field(default=90, ge=1, le=100)
     api_football_cache_days: int = Field(default=7, ge=1)
     api_football_fixture_cache_minutes: int = Field(default=30, ge=1)
+    api_football_free_plan_fallback_season: int = Field(default=2024, ge=2000, le=2200)
     api_football_media_hosts: list[str] = Field(
         default_factory=lambda: ["media.api-sports.io"]
     )
