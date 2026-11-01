@@ -3,7 +3,7 @@
 from datetime import date, datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, JSON, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
@@ -77,6 +77,40 @@ class ProviderSyncRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ProviderSyncStage(Base):
+    __tablename__ = "provider_sync_stages"
+    __table_args__ = (
+        UniqueConstraint("sync_run_id", "name", name="uq_provider_sync_stage"),
+        CheckConstraint(
+            "status IN ('pending','running','completed','skipped','failed')",
+            name="ck_provider_sync_stage_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sync_run_id: Mapped[int] = mapped_column(ForeignKey("provider_sync_runs.id"), index=True)
+    name: Mapped[str] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(24), default="pending", index=True)
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ProviderRequestLease(Base):
+    __tablename__ = "provider_request_leases"
+    __table_args__ = (
+        UniqueConstraint("provider", "scope_key", name="uq_provider_request_lease"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(40))
+    scope_key: Mapped[str] = mapped_column(String(160))
+    owner_token: Mapped[str] = mapped_column(String(64))
+    acquired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
 class ProviderStandingSnapshot(Base):

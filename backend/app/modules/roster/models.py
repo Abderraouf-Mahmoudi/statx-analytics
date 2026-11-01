@@ -3,7 +3,7 @@
 from datetime import date, datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -33,6 +33,12 @@ class Player(Base):
     first_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    display_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    birth_place: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    birth_country: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    primary_position: Mapped[str] = mapped_column(String(10), default="OTHER")
+    secondary_positions: Mapped[list[str]] = mapped_column(JSON, default=list)
+    player_field_overrides: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
