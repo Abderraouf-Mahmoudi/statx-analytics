@@ -148,6 +148,33 @@ class ProviderRepository:
                 cache_age_seconds=age,
             )
 
+    def cached_pages(
+        self,
+        endpoint: str,
+        params: Mapping[str, Scalar | None],
+        ttl: timedelta,
+        *,
+        max_pages: int,
+        now: datetime | None = None,
+    ) -> list[dict]:
+        """Fetch a bounded provider collection while accounting for each page."""
+        if max_pages < 1:
+            raise ValueError("max_pages must be positive")
+        rows: list[dict] = []
+        page = 1
+        while page <= max_pages:
+            envelope = self.cached_request(
+                endpoint,
+                {**params, "page": page},
+                ttl,
+                now=now,
+            )
+            rows.extend(envelope.response)
+            if page >= envelope.total_pages:
+                return rows
+            page += 1
+        return rows
+
     def acquire_request_lease(
         self,
         scope_key: str,

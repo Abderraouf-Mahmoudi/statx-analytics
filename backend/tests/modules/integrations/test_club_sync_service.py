@@ -29,6 +29,9 @@ class FakeRepository:
         payload = self.responses[endpoint]
         return ProviderEnvelope(payload, len(payload), 1, 1, 80)
 
+    def cached_pages(self, endpoint, params, ttl: timedelta, *, max_pages, now=None):
+        return self.cached_request(endpoint, params, ttl, now=now).response
+
 
 def make_session(tmp_path) -> tuple[Session, Organization]:
     engine = create_engine(f"sqlite:///{(tmp_path / 'sync.db').as_posix()}")
@@ -50,6 +53,7 @@ def provider_payloads() -> dict[str, list[dict]]:
         ]}],
         "/fixtures": [{"fixture": {"id": 9001, "date": "2026-10-20T18:00:00+00:00", "status": {"short": "FT"}}, "league": {"id": 202, "name": "Ligue 1", "season": 2026}, "teams": {"home": {"id": 1001, "name": "Espérance ST"}, "away": {"id": 1002, "name": "Club Africain"}}, "goals": {"home": 2, "away": 1}}],
         "/standings": [{"league": {"id": 202, "season": 2026, "standings": [[{"rank": 1, "team": {"id": 1001}, "points": 31}]]}}],
+        "/players": [],
     }
 
 
@@ -64,7 +68,7 @@ def selection() -> ClubSelectionCommand:
     )
 
 
-def test_initial_workflow_uses_five_calls_and_refresh_is_idempotent(tmp_path) -> None:
+def test_initial_workflow_uses_paginated_profile_call_and_refresh_is_idempotent(tmp_path) -> None:
     session, organization = make_session(tmp_path)
     repository = FakeRepository(provider_payloads())
     service = ClubSyncService(session, repository)
@@ -75,7 +79,7 @@ def test_initial_workflow_uses_five_calls_and_refresh_is_idempotent(tmp_path) ->
         session.commit()
 
         assert [club.name for club in clubs] == ["Espérance ST"]
-        assert len(repository.calls) == 5
+        assert len(repository.calls) == 6
         assert summary == {"teams": 2, "players": 2, "fixtures": 1, "standings": 1, "absent": 0}
         assert session.query(Player).count() == 2
         assert session.query(PlayerRegistration).count() == 2
@@ -184,7 +188,8 @@ def test_sync_stages_are_persisted_and_optional_failure_is_sanitized(tmp_path) -
         assert summary["fixtures"] == 0
         assert stages["squad"].status == "completed"
         assert stages["squad"].item_count == 2
-        assert stages["profiles"].status == "skipped"
+        assert stages["profiles"].status == "completed"
+        assert stages["profiles"].item_count == 0
         assert stages["fixtures"].status == "failed"
         assert stages["fixtures"].error_summary == "RuntimeError"
         assert "secret-value" not in stages["fixtures"].error_summary

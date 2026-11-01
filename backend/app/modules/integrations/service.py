@@ -12,6 +12,8 @@ from app.modules.integrations.models import (
     ProviderSyncRun,
     ProviderSyncStage,
 )
+from app.modules.integrations.player_enrichment import PlayerEnrichmentService
+from app.modules.integrations.repository import QuotaReserved
 from app.modules.integrations.schemas import ClubSelectionCommand, ProviderClub
 from app.modules.matches.models import Match
 from app.modules.organizations.models import Organization, Season, Team, TeamSeason
@@ -133,8 +135,24 @@ class ClubSyncService:
             raise
 
         profiles_stage = self._stage(run, "profiles")
-        profiles_stage.status = "skipped"
-        profiles_stage.completed_at = utc_now()
+        self._start_stage(profiles_stage)
+        profile_rows: list[dict] | None = None
+        try:
+            profile_rows = self.repository.cached_pages(
+                "/players",
+                {
+                    "team": int(command.team_provider_id),
+                    "season": command.season,
+                },
+                timedelta(days=7),
+                max_pages=10,
+            )
+        except QuotaReserved:
+            profiles_stage.status = "skipped"
+            profiles_stage.error_summary = "QuotaReserved"
+            profiles_stage.completed_at = utc_now()
+        except Exception as exc:
+            self._fail_stage(profiles_stage, exc)
 
         fixtures: list[dict] = []
         fixtures_stage = self._stage(run, "fixtures")
@@ -173,6 +191,26 @@ class ClubSyncService:
                 summary = self._apply_payload(
                     run, command, players, fixtures, standing_payload
                 )
+                if profile_rows is not None:
+                    organization = self.session.get(Organization, run.organization_id)
+                    team = self.session.get(Team, organization.primary_team_id)
+                    season = self.session.scalar(
+                        select(Season).where(
+                            Season.organization_id == organization.id,
+                            Season.competition_provider_id == command.league_provider_id,
+                            Season.season_year == command.season,
+                        )
+                    )
+                    enrichment = PlayerEnrichmentService(self.session).apply(
+                        team,
+                        season,
+                        profile_rows,
+                    )
+                    self._complete_stage(profiles_stage, enrichment.imported)
+                    if enrichment.malformed:
+                        profiles_stage.error_summary = (
+                            f"{enrichment.malformed} malformed profile(s) skipped"
+                        )
         except Exception:
             run.status = "failed"
             run.error_summary = "Validated provider data could not be synchronized"
@@ -184,6 +222,8 @@ class ClubSyncService:
         quota = self.repository.quota_snapshot() if hasattr(self.repository, "quota_snapshot") else None
         run.remaining_quota = quota.remaining if quota else None
         run.completed_at = utc_now()
+        portraits_stage = self._stage(run, "portraits")
+        portraits_stage.item_count = len(players)
         self.session.flush()
         return summary
 
