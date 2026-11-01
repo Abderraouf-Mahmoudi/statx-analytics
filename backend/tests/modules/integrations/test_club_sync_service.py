@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.db.model_registry import Base
 from app.modules.integrations.api_football import ProviderEnvelope
 from app.modules.integrations.schemas import ClubSelectionCommand
+from app.modules.integrations.models import ProviderSyncStage
 from app.modules.integrations.service import (
     ClubSyncService,
     InvalidProviderPayload,
@@ -27,6 +28,9 @@ class FakeRepository:
         self.calls.append((endpoint, dict(params)))
         payload = self.responses[endpoint]
         return ProviderEnvelope(payload, len(payload), 1, 1, 80)
+
+    def cached_pages(self, endpoint, params, ttl: timedelta, *, max_pages, now=None):
+        return self.cached_request(endpoint, params, ttl, now=now).response
 
 
 def make_session(tmp_path) -> tuple[Session, Organization]:
@@ -49,6 +53,7 @@ def provider_payloads() -> dict[str, list[dict]]:
         ]}],
         "/fixtures": [{"fixture": {"id": 9001, "date": "2026-10-20T18:00:00+00:00", "status": {"short": "FT"}}, "league": {"id": 202, "name": "Ligue 1", "season": 2026}, "teams": {"home": {"id": 1001, "name": "Espérance ST"}, "away": {"id": 1002, "name": "Club Africain"}}, "goals": {"home": 2, "away": 1}}],
         "/standings": [{"league": {"id": 202, "season": 2026, "standings": [[{"rank": 1, "team": {"id": 1001}, "points": 31}]]}}],
+        "/players": [],
     }
 
 
@@ -63,7 +68,7 @@ def selection() -> ClubSelectionCommand:
     )
 
 
-def test_initial_workflow_uses_five_calls_and_refresh_is_idempotent(tmp_path) -> None:
+def test_initial_workflow_uses_paginated_profile_call_and_refresh_is_idempotent(tmp_path) -> None:
     session, organization = make_session(tmp_path)
     repository = FakeRepository(provider_payloads())
     service = ClubSyncService(session, repository)
@@ -74,7 +79,7 @@ def test_initial_workflow_uses_five_calls_and_refresh_is_idempotent(tmp_path) ->
         session.commit()
 
         assert [club.name for club in clubs] == ["Espérance ST"]
-        assert len(repository.calls) == 5
+        assert len(repository.calls) == 6
         assert summary == {"teams": 2, "players": 2, "fixtures": 1, "standings": 1, "absent": 0}
         assert session.query(Player).count() == 2
         assert session.query(PlayerRegistration).count() == 2
@@ -154,4 +159,41 @@ def test_database_lease_allows_only_one_worker_and_recovers_after_expiry(tmp_pat
         assert recovered.public_id == run.public_id
     finally:
         competitor.close()
+        session.close()
+
+
+def test_sync_stages_are_persisted_and_optional_failure_is_sanitized(tmp_path) -> None:
+    session, organization = make_session(tmp_path)
+    payloads = provider_payloads()
+
+    class OptionalFailureRepository(FakeRepository):
+        def cached_request(self, endpoint, params, ttl: timedelta, *, now=None):
+            if endpoint == "/fixtures":
+                raise RuntimeError("x-apisports-key: secret-value")
+            return super().cached_request(endpoint, params, ttl, now=now)
+
+    service = ClubSyncService(session, OptionalFailureRepository(payloads))
+    try:
+        run = service.queue_initial_sync(organization.id, selection())
+        summary = service.execute_run(run.public_id)
+        session.commit()
+        stages = {
+            stage.name: stage
+            for stage in session.scalars(
+                select(ProviderSyncStage).where(ProviderSyncStage.sync_run_id == run.id)
+            )
+        }
+
+        assert run.status == "completed"
+        assert summary["fixtures"] == 0
+        assert stages["squad"].status == "completed"
+        assert stages["squad"].item_count == 2
+        assert stages["profiles"].status == "completed"
+        assert stages["profiles"].item_count == 0
+        assert stages["fixtures"].status == "failed"
+        assert stages["fixtures"].error_summary == "RuntimeError"
+        assert "secret-value" not in stages["fixtures"].error_summary
+        assert stages["standings"].status == "completed"
+        assert stages["portraits"].status == "pending"
+    finally:
         session.close()

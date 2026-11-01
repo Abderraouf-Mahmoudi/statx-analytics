@@ -124,3 +124,75 @@ def test_provider_portrait_download_is_https_host_allowlisted_and_identification
         assert photo.rights_status == "provider_identification_only"
     finally:
         session.close()
+
+
+def test_club_portrait_has_priority_and_deletion_reveals_ready_provider_portrait(tmp_path) -> None:
+    session, organization, _, player, service = setup(tmp_path)
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, content=png_bytes(), request=request)
+        ),
+        follow_redirects=False,
+    )
+    try:
+        provider = service.queue_provider_portrait(
+            organization.id,
+            player.public_id,
+            "https://media.api-sports.io/football/players/501.png",
+            http_client=client,
+        )
+        assert provider is not None
+        assert service.process_pending_once() == 1
+        club = service.queue_upload(
+            organization.id,
+            player.public_id,
+            "gallery",
+            BytesIO(png_bytes()),
+        )
+        assert service.process_pending_once() == 1
+
+        assert service.current_photo(organization.id, player.public_id).public_id == club.public_id
+        assert service.queue_provider_portrait(
+            organization.id,
+            player.public_id,
+            "https://media.api-sports.io/football/players/501.png",
+            http_client=client,
+        ) is None
+
+        service.delete_current(organization.id, player.public_id)
+        assert service.current_photo(organization.id, player.public_id).public_id == provider.public_id
+        assert service.current_photo(organization.id, player.public_id).processing_status == "ready"
+    finally:
+        client.close()
+        session.close()
+
+
+def test_failed_photo_can_be_retried_without_exposing_error_details(tmp_path) -> None:
+    session, organization, _, player, _ = setup(tmp_path)
+    processor = ImageProcessor(
+        max_bytes=1_000_000,
+        max_pixels=1_000_000,
+        remover=lambda _: (_ for _ in ()).throw(RuntimeError("secret model path")),
+    )
+    service = PlayerMediaService(
+        session,
+        Settings(
+            database_url="sqlite://",
+            data_root=tmp_path / "data",
+            session_secret="test-session-secret-with-enough-entropy",
+            _env_file=None,
+        ),
+        processor,
+    )
+    try:
+        photo = service.queue_upload(
+            organization.id, player.public_id, "camera", BytesIO(png_bytes())
+        )
+        service.process_pending_once()
+        assert photo.processing_status == "failed"
+        assert photo.error_summary == "MediaProcessingError"
+        retried = service.retry_current(organization.id, player.public_id)
+        assert retried.processing_status == "pending"
+        assert retried.error_summary is None
+    finally:
+        session.close()

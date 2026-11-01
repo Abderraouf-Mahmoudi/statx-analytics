@@ -1,6 +1,21 @@
 """Public commands and views for local identity flows."""
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.modules.integrations.schemas import ClubSelectionCommand
+
+
+FootballJobTitle = Literal[
+    "director",
+    "coach",
+    "analyst",
+    "scout",
+    "medical",
+    "media",
+    "other",
+]
 
 
 class BootstrapCommand(BaseModel):
@@ -13,6 +28,8 @@ class BootstrapCommand(BaseModel):
     country_code: str | None = Field(default=None, min_length=2, max_length=2)
     default_locale: str = Field(default="fr", min_length=2, max_length=10)
     timezone: str = Field(default="UTC", min_length=1, max_length=64)
+    job_title: FootballJobTitle
+    selected_club: ClubSelectionCommand | None = None
 
     @field_validator("country_code")
     @classmethod
@@ -40,5 +57,6 @@ class SessionView(BaseModel):
     display_name: str
     email: str
     role: str
+    job_title: FootballJobTitle
     locale: str
 

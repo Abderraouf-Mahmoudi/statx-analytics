@@ -2,12 +2,13 @@ import { AppShell } from "../components/shell/AppShell";
 import { useLocation } from "react-router-dom";
 import { RosterPage } from "../features/roster/RosterPage";
 import { ClubDashboardPage } from "../features/club/ClubDashboardPage";
+import { ClubAssociationPanel } from "../features/integrations/ClubAssociationPanel";
 
 export function App() {
   const location = useLocation();
   return (
     <AppShell>
-      {location.pathname === "/roster" ? <RosterPage /> : location.pathname === "/" ? <ClubDashboardPage /> :
+      {location.pathname === "/roster" ? <RosterPage /> : location.pathname === "/" ? <ClubDashboardPage /> : location.pathname === "/admin" ? <ClubAssociationPanel /> :
       <section className="shell-placeholder">
         <small>FONDATION PRODUIT · MODE LOCAL</small>
         <h1>Centre opérationnel StatX</h1>

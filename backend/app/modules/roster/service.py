@@ -2,14 +2,16 @@
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.modules.identity.service import ResourceNotFound
 from app.modules.media.models import PlayerPhoto
+from app.modules.matches.models import Event, TrackingPoint
 from app.modules.organizations.models import Season, Team
 from app.modules.platform.audit import write_audit
 from app.modules.roster.models import Consent, Player, PlayerRegistration
+from app.modules.roster.statistics_models import PlayerSeasonSnapshot
 from app.modules.roster.schemas import RosterItem
 
 
@@ -18,6 +20,10 @@ class RosterConflict(RuntimeError):
 
 
 class ConsentRequired(RuntimeError):
+    pass
+
+
+class PlayerDeleteBlocked(RuntimeError):
     pass
 
 
@@ -36,6 +42,8 @@ def create_player(session: Session, organization_id: int, command) -> Player:
         first_name=command.first_name,
         last_name=command.last_name,
         birth_date=command.birth_date,
+        display_name=f"{command.first_name} {command.last_name}".strip(),
+        primary_position=command.primary_position,
         name=f"{command.first_name} {command.last_name}".strip(),
         team_id=None,
         jersey_number=None,
@@ -54,6 +62,124 @@ def create_player(session: Session, organization_id: int, command) -> Player:
         after={"name": player.name},
     )
     return player
+
+
+def update_player(
+    session: Session,
+    organization_id: int,
+    player_public_id: str,
+    command,
+    *,
+    actor_id: int | None,
+) -> Player:
+    player = _scoped(session, Player, player_public_id, organization_id)
+    changed = command.model_dump(exclude_unset=True)
+    audit_after = command.model_dump(exclude_unset=True, mode="json")
+    before = {
+        field: value.isoformat() if isinstance(value, (date, datetime)) else value
+        for field in changed
+        if (value := getattr(player, field)) is not None
+    }
+    moment = datetime.now(timezone.utc)
+    overrides = dict(player.player_field_overrides or {})
+    for field, value in changed.items():
+        setattr(player, field, value)
+        overrides[field] = {
+            "source": "club",
+            "actor_id": actor_id,
+            "updated_at": moment.isoformat(),
+        }
+    if "primary_position" in changed:
+        player.position = changed["primary_position"]
+    if "first_name" in changed or "last_name" in changed:
+        player.name = f"{player.first_name or ''} {player.last_name or ''}".strip()
+    player.player_field_overrides = overrides
+    player.local_override = True
+    session.flush()
+    write_audit(
+        session,
+        actor_id=actor_id,
+        organization_id=organization_id,
+        action="player.updated",
+        entity_type="player",
+        entity_public_id=player.public_id,
+        before=before,
+        after=audit_after,
+    )
+    return player
+
+
+def deactivate_registration(
+    session: Session,
+    organization_id: int,
+    registration_public_id: str,
+    *,
+    end_date: date,
+    actor_id: int | None,
+) -> PlayerRegistration:
+    registration = session.scalar(
+        select(PlayerRegistration)
+        .join(Player, Player.id == PlayerRegistration.player_id)
+        .where(
+            PlayerRegistration.public_id == registration_public_id,
+            Player.organization_id == organization_id,
+        )
+    )
+    if registration is None:
+        raise ResourceNotFound("Resource not found")
+    before = {"status": registration.status, "end_date": registration.end_date}
+    registration.status = "inactive"
+    registration.end_date = end_date
+    session.flush()
+    write_audit(
+        session,
+        actor_id=actor_id,
+        organization_id=organization_id,
+        action="player_registration.deactivated",
+        entity_type="player_registration",
+        entity_public_id=registration.public_id,
+        before=before,
+        after={"status": "inactive", "end_date": end_date.isoformat()},
+    )
+    return registration
+
+
+def safe_delete_player(
+    session: Session,
+    organization_id: int,
+    player_public_id: str,
+    *,
+    actor_id: int | None,
+) -> None:
+    player = _scoped(session, Player, player_public_id, organization_id)
+    dependencies = (
+        (PlayerRegistration, PlayerRegistration.player_id),
+        (Consent, Consent.player_id),
+        (PlayerPhoto, PlayerPhoto.player_id),
+        (Event, Event.player_id),
+        (TrackingPoint, TrackingPoint.player_id),
+        (PlayerSeasonSnapshot, PlayerSeasonSnapshot.player_id),
+    )
+    if any(
+        session.scalar(select(func.count()).select_from(model).where(column == player.id))
+        for model, column in dependencies
+    ):
+        raise PlayerDeleteBlocked(
+            "Player has registrations or analytical history; deactivate the registration instead"
+        )
+    public_id = player.public_id
+    before = {"name": player.name, "source": player.source}
+    session.delete(player)
+    session.flush()
+    write_audit(
+        session,
+        actor_id=actor_id,
+        organization_id=organization_id,
+        action="player.deleted",
+        entity_type="player",
+        entity_public_id=public_id,
+        before=before,
+    )
 
 
 def get_player(session: Session, organization_id: int, player_public_id: str) -> Player:
@@ -201,6 +327,7 @@ def list_roster(
         )
         result.append(
             RosterItem(
+                registration_id=registration.public_id,
                 player_id=player.public_id,
                 first_name=player.first_name or "",
                 last_name=player.last_name or "",
@@ -210,8 +337,9 @@ def list_roster(
                 preferred_foot=registration.preferred_foot or player.preferred_foot,
                 source=player.source,
                 provider_absent=player.provider_absent,
-                photo_status=photo.processing_status if photo else None,
+                photo_status=photo.processing_status if photo else "no_photo",
                 photo_rights_status=photo.rights_status if photo else None,
+                registration_status=registration.status,
             )
         )
     return result

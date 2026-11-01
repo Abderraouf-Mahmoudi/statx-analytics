@@ -10,14 +10,14 @@ from app.api.problems import ProblemException
 from app.config import Settings, get_settings
 from app.db.database import get_db
 from app.modules.identity.dependencies import require_roles
-from app.modules.identity.service import Actor
+from app.modules.identity.service import Actor, ResourceNotFound
 from app.modules.media.image_processor import InvalidPlayerImage
 from app.modules.media.models import PlayerPhoto
 from app.modules.media.service import PlayerMediaService, default_processor
 
 
 router = APIRouter(tags=["player-media"])
-editor = require_roles("admin", "analyst")
+editor = require_roles("admin", "coach", "analyst")
 reader = require_roles("admin", "analyst", "coach", "viewer")
 
 
@@ -80,6 +80,43 @@ def get_player_photo(
     if settings.data_root.resolve() not in path.parents or not path.is_file():
         raise ProblemException(404, "photo_file_missing", "Processed player photo is unavailable")
     return FileResponse(path, media_type="image/png", headers={"ETag": etag})
+
+
+@router.get("/players/{player_id}/photo/status")
+def get_player_photo_status(
+    player_id: str,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(reader),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    try:
+        return _view(_service(db, settings).current_photo(actor.organization_id, player_id))
+    except ResourceNotFound:
+        return {
+            "public_id": None,
+            "source": None,
+            "status": "no_photo",
+            "rights_status": None,
+            "width": None,
+            "height": None,
+            "error": None,
+        }
+
+
+@router.post("/players/{player_id}/photo/retry", status_code=status.HTTP_202_ACCEPTED)
+def retry_player_photo(
+    player_id: str,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(editor),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    try:
+        photo = _service(db, settings).retry_current(actor.organization_id, player_id)
+        db.commit()
+        return _view(photo)
+    except ValueError as exc:
+        db.rollback()
+        raise ProblemException(409, "photo_retry_not_allowed", str(exc)) from exc
 
 
 @router.delete("/players/{player_id}/photo", status_code=status.HTTP_204_NO_CONTENT)

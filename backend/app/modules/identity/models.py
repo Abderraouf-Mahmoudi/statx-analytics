@@ -27,6 +27,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     default_locale: Mapped[str] = mapped_column(String(10), default="fr")
+    job_title: Mapped[str] = mapped_column(String(24), default="other")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 

@@ -8,6 +8,7 @@ from app.modules.media import models as media_models  # noqa: F401
 from app.modules.organizations import models as organization_models  # noqa: F401
 from app.modules.platform import models as platform_models  # noqa: F401
 from app.modules.roster import models as roster_models  # noqa: F401
+from app.modules.roster import statistics_models as roster_statistics_models  # noqa: F401
 
 __all__ = ["Base"]
 

@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
 
-import { uploadPlayerPhoto, type PhotoView } from "./api";
+import { getPlayerPhotoStatus, uploadPlayerPhoto, type PhotoView } from "./api";
 
 export interface PhotoSelection { file: File; source: "camera" | "gallery" }
 
 export function PlayerPhotoPicker({
   playerId,
   upload = uploadPlayerPhoto,
+  getStatus = getPlayerPhotoStatus,
+  pollIntervalMs = 1000,
+  onReady,
   onSelectionChange,
 }: {
   playerId?: string;
   upload?: (playerId: string, source: "camera" | "gallery", file: File) => Promise<PhotoView>;
+  getStatus?: (playerId: string) => Promise<PhotoView>;
+  pollIntervalMs?: number;
+  onReady?: () => void;
   onSelectionChange?: (selection: PhotoSelection | null) => void;
 }) {
   const [selection, setSelection] = useState<PhotoSelection | null>(null);
@@ -20,6 +26,22 @@ export function PlayerPhotoPicker({
   const [pending, setPending] = useState(false);
 
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+
+  useEffect(() => {
+    if (!playerId || !status || !["pending", "processing"].includes(status.status)) return;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const next = await getStatus(playerId);
+        if (!active) return;
+        setStatus(next);
+        if (next.status === "ready") onReady?.();
+      } catch {
+        if (active) setError("Impossible de vérifier le traitement du portrait.");
+      }
+    }, pollIntervalMs);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [getStatus, onReady, playerId, pollIntervalMs, status]);
 
   function choose(file: File | undefined, source: "camera" | "gallery") {
     setError("");

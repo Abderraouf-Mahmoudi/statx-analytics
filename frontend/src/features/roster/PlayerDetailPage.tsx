@@ -1,7 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { getConsents, getPlayer, recordConsent, revokePlayerConsent, type ConsentView, type PlayerView } from "./api";
+import { deactivateRegistration, deletePlayer, getConsents, getPlayer, recordConsent, revokePlayerConsent, updatePlayer, type ConsentView, type PlayerView } from "./api";
 import { ConsentPanel } from "./ConsentPanel";
+import { PlayerEditForm } from "./PlayerEditForm";
+import { PlayerPhotoPicker } from "./PlayerPhotoPicker";
 
 type Detail = { player: PlayerView; consents: ConsentView[] };
 
@@ -10,8 +12,9 @@ async function defaultLoad(playerId: string): Promise<Detail> {
   return { player, consents };
 }
 
-export function PlayerDetailPage({ playerId, onClose, loadDetail = defaultLoad, addConsent, revokeConsent }: {
+export function PlayerDetailPage({ playerId, registrationId, onClose, loadDetail = defaultLoad, addConsent, revokeConsent }: {
   playerId: string;
+  registrationId?: string;
   onClose: () => void;
   loadDetail?: (playerId: string) => Promise<Detail>;
   addConsent?: (payload: Record<string, string>) => Promise<unknown>;
@@ -19,6 +22,7 @@ export function PlayerDetailPage({ playerId, onClose, loadDetail = defaultLoad, 
 }) {
   const client = useQueryClient();
   const [error, setError] = useState("");
+  const [editing, setEditing] = useState(false);
   const query = useQuery({ queryKey: ["player-detail", playerId], queryFn: () => loadDetail(playerId) });
   async function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError("");
@@ -37,9 +41,13 @@ export function PlayerDetailPage({ playerId, onClose, loadDetail = defaultLoad, 
   const { player, consents } = query.data;
   const minor = consents.some((consent) => consent.subject_is_minor) || Boolean(player.birth_date && new Date().getFullYear() - Number(player.birth_date.slice(0, 4)) < 18);
   return <section className="player-detail">
-    <div className="form-heading"><div><p className="eyebrow">IDENTITÉ & CONFORMITÉ</p><h2>{player.first_name} {player.last_name}</h2></div><button className="touch-target secondary-action" onClick={onClose}>Fermer</button></div>
+    <div className="form-heading"><div><p className="eyebrow">IDENTITÉ & CONFORMITÉ</p><h2>{player.display_name || `${player.first_name} ${player.last_name}`}</h2><p>{player.primary_position ?? "OTHER"} · {player.nationality ?? "Nationalité non renseignée"}{player.height_cm ? ` · ${player.height_cm} cm` : ""}</p></div><div className="detail-actions"><button className="touch-target secondary-action" onClick={() => setEditing((value) => !value)}>Modifier</button><button className="touch-target secondary-action" onClick={onClose}>Fermer</button></div></div>
+    {editing && <PlayerEditForm player={player} onCancel={() => setEditing(false)} onSubmit={async (payload) => { await updatePlayer(playerId, payload); setEditing(false); await client.invalidateQueries({ queryKey: ["player-detail", playerId] }); await client.invalidateQueries({ queryKey: ["roster"] }); }} />}
+    <div><p className="eyebrow">PORTRAIT</p><PlayerPhotoPicker playerId={playerId} onReady={() => void client.invalidateQueries({ queryKey: ["roster"] })} /></div>
     <ConsentPanel isMinor={minor} consents={consents} />
     <form className="dense-form" onSubmit={add}><h3>Nouvelle preuve</h3><label>Empreinte SHA-256<input className="touch-target" name="document_sha256" maxLength={64} required /></label><label>Représentant légal<input className="touch-target" name="guardian_name" /></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="touch-target primary-action">Enregistrer le consentement</button></form>
     {consents.filter((consent) => consent.status === "active").map((consent) => <button key={consent.public_id} className="touch-target danger-action" onClick={() => void revoke(consent.public_id)}>Révoquer</button>)}
+    {registrationId && <button className="touch-target danger-action" onClick={async () => { try { await deactivateRegistration(registrationId, new Date().toISOString().slice(0, 10)); await client.invalidateQueries({ queryKey: ["roster"] }); onClose(); } catch { setError("Impossible de retirer ce joueur de l’effectif."); } }}>Retirer de l’effectif</button>}
+    <button className="touch-target danger-action" onClick={async () => { setError(""); try { await deletePlayer(playerId); await client.invalidateQueries({ queryKey: ["roster"] }); onClose(); } catch { setError("Ce joueur possède un historique. Retirez-le de l’effectif au lieu de le supprimer."); } }}>Supprimer la fiche créée par erreur</button>
   </section>;
 }

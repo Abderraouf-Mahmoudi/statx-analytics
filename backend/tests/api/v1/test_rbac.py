@@ -23,6 +23,7 @@ def actor(role: str = "admin") -> Actor:
         display_name="Analyste",
         email="analyst@statx.local",
         role=role,
+        job_title="other",
         locale="fr",
     )
 

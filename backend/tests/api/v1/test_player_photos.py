@@ -9,4 +9,6 @@ def test_player_photo_routes_are_versioned_and_not_public_static_exports() -> No
         ("/api/v1/players/{player_id}/photo", "POST"),
         ("/api/v1/players/{player_id}/photo", "GET"),
         ("/api/v1/players/{player_id}/photo", "DELETE"),
+        ("/api/v1/players/{player_id}/photo/retry", "POST"),
+        ("/api/v1/players/{player_id}/photo/status", "GET"),
     } <= routes

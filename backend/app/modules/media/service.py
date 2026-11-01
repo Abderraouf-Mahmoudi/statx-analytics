@@ -121,7 +121,16 @@ class PlayerMediaService:
         url: str,
         *,
         http_client: httpx.Client | None = None,
-    ) -> PlayerPhoto:
+    ) -> PlayerPhoto | None:
+        player = self._player(organization_id, player_public_id)
+        club_photo = self.session.scalar(
+            select(PlayerPhoto).where(
+                PlayerPhoto.player_id == player.id,
+                PlayerPhoto.source.in_(["camera", "gallery"]),
+            )
+        )
+        if club_photo is not None:
+            return None
         parsed = urlsplit(url)
         allowed_hosts = {host.lower() for host in self.settings.api_football_media_hosts}
         if parsed.scheme != "https" or (parsed.hostname or "").lower() not in allowed_hosts:
@@ -222,6 +231,16 @@ class PlayerMediaService:
             entity_public_id=photo.public_id,
             before={"sha256": photo.sha256, "source": photo.source},
         )
+        return photo
+
+    def retry_current(self, organization_id: int, player_public_id: str) -> PlayerPhoto:
+        photo = self.current_photo(organization_id, player_public_id)
+        if photo.processing_status != "failed":
+            raise ValueError("Only a failed portrait can be retried")
+        photo.processing_status = "pending"
+        photo.error_summary = None
+        photo.processed_at = None
+        self.session.flush()
         return photo
 
 

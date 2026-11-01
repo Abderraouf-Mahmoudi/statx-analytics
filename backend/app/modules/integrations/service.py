@@ -7,7 +7,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.identity.service import ResourceNotFound
-from app.modules.integrations.models import ProviderStandingSnapshot, ProviderSyncRun
+from app.modules.integrations.models import (
+    ProviderStandingSnapshot,
+    ProviderSyncRun,
+    ProviderSyncStage,
+)
+from app.modules.integrations.player_enrichment import PlayerEnrichmentService
+from app.modules.integrations.repository import QuotaReserved
 from app.modules.integrations.schemas import ClubSelectionCommand, ProviderClub
 from app.modules.matches.models import Match
 from app.modules.organizations.models import Organization, Season, Team, TeamSeason
@@ -38,6 +44,7 @@ def _split_name(name: str) -> tuple[str, str]:
 
 class ClubSyncService:
     provider = "api_football"
+    stage_names = ("squad", "profiles", "fixtures", "standings", "portraits")
 
     def __init__(self, session: Session, repository) -> None:
         self.session = session
@@ -84,6 +91,11 @@ class ClubSyncService:
         )
         self.session.add(run)
         self.session.flush()
+        for name in self.stage_names:
+            self.session.add(
+                ProviderSyncStage(sync_run_id=run.id, name=name, status="pending")
+            )
+        self.session.flush()
         write_audit(
             self.session,
             actor_id=None,
@@ -106,32 +118,99 @@ class ClubSyncService:
         run.started_at = utc_now()
         self.session.flush()
 
-        squad_payload = self.repository.cached_request(
-            "/players/squads", {"team": int(command.team_provider_id)}, timedelta(days=7)
-        ).response
-        fixture_payload = self.repository.cached_request(
-            "/fixtures",
-            {
-                "team": int(command.team_provider_id),
-                "league": int(command.league_provider_id),
-                "season": command.season,
-            },
-            timedelta(minutes=30),
-        ).response
-        standing_payload = self.repository.cached_request(
-            "/standings",
-            {"league": int(command.league_provider_id), "season": command.season},
-            timedelta(minutes=30),
-        ).response
-        players = self._validate_squad(squad_payload, command.team_provider_id)
-        fixtures = self._validate_fixtures(fixture_payload)
-        self._validate_standings(standing_payload)
+        squad_stage = self._stage(run, "squad")
+        self._start_stage(squad_stage)
+        try:
+            squad_payload = self.repository.cached_request(
+                "/players/squads", {"team": int(command.team_provider_id)}, timedelta(days=7)
+            ).response
+            players = self._validate_squad(squad_payload, command.team_provider_id)
+            self._complete_stage(squad_stage, len(players))
+        except Exception as exc:
+            self._fail_stage(squad_stage, exc)
+            run.status = "failed"
+            run.error_summary = type(exc).__name__
+            run.completed_at = utc_now()
+            self.session.flush()
+            raise
+
+        profiles_stage = self._stage(run, "profiles")
+        self._start_stage(profiles_stage)
+        profile_rows: list[dict] | None = None
+        try:
+            profile_rows = self.repository.cached_pages(
+                "/players",
+                {
+                    "team": int(command.team_provider_id),
+                    "season": command.season,
+                },
+                timedelta(days=7),
+                max_pages=10,
+            )
+        except QuotaReserved:
+            profiles_stage.status = "skipped"
+            profiles_stage.error_summary = "QuotaReserved"
+            profiles_stage.completed_at = utc_now()
+        except Exception as exc:
+            self._fail_stage(profiles_stage, exc)
+
+        fixtures: list[dict] = []
+        fixtures_stage = self._stage(run, "fixtures")
+        self._start_stage(fixtures_stage)
+        try:
+            fixture_payload = self.repository.cached_request(
+                "/fixtures",
+                {
+                    "team": int(command.team_provider_id),
+                    "league": int(command.league_provider_id),
+                    "season": command.season,
+                },
+                timedelta(minutes=30),
+            ).response
+            fixtures = self._validate_fixtures(fixture_payload)
+            self._complete_stage(fixtures_stage, len(fixtures))
+        except Exception as exc:
+            self._fail_stage(fixtures_stage, exc)
+
+        standing_payload: list[dict] = []
+        standings_stage = self._stage(run, "standings")
+        self._start_stage(standings_stage)
+        try:
+            standing_payload = self.repository.cached_request(
+                "/standings",
+                {"league": int(command.league_provider_id), "season": command.season},
+                timedelta(minutes=30),
+            ).response
+            self._validate_standings(standing_payload)
+            self._complete_stage(standings_stage, len(standing_payload))
+        except Exception as exc:
+            self._fail_stage(standings_stage, exc)
 
         try:
             with self.session.begin_nested():
                 summary = self._apply_payload(
                     run, command, players, fixtures, standing_payload
                 )
+                if profile_rows is not None:
+                    organization = self.session.get(Organization, run.organization_id)
+                    team = self.session.get(Team, organization.primary_team_id)
+                    season = self.session.scalar(
+                        select(Season).where(
+                            Season.organization_id == organization.id,
+                            Season.competition_provider_id == command.league_provider_id,
+                            Season.season_year == command.season,
+                        )
+                    )
+                    enrichment = PlayerEnrichmentService(self.session).apply(
+                        team,
+                        season,
+                        profile_rows,
+                    )
+                    self._complete_stage(profiles_stage, enrichment.imported)
+                    if enrichment.malformed:
+                        profiles_stage.error_summary = (
+                            f"{enrichment.malformed} malformed profile(s) skipped"
+                        )
         except Exception:
             run.status = "failed"
             run.error_summary = "Validated provider data could not be synchronized"
@@ -143,8 +222,41 @@ class ClubSyncService:
         quota = self.repository.quota_snapshot() if hasattr(self.repository, "quota_snapshot") else None
         run.remaining_quota = quota.remaining if quota else None
         run.completed_at = utc_now()
+        portraits_stage = self._stage(run, "portraits")
+        portraits_stage.item_count = len(players)
         self.session.flush()
         return summary
+
+    def _stage(self, run: ProviderSyncRun, name: str) -> ProviderSyncStage:
+        stage = self.session.scalar(
+            select(ProviderSyncStage).where(
+                ProviderSyncStage.sync_run_id == run.id,
+                ProviderSyncStage.name == name,
+            )
+        )
+        if stage is None:
+            stage = ProviderSyncStage(sync_run_id=run.id, name=name, status="pending")
+            self.session.add(stage)
+            self.session.flush()
+        return stage
+
+    @staticmethod
+    def _start_stage(stage: ProviderSyncStage) -> None:
+        stage.status = "running"
+        stage.started_at = utc_now()
+        stage.error_summary = None
+
+    @staticmethod
+    def _complete_stage(stage: ProviderSyncStage, item_count: int) -> None:
+        stage.status = "completed"
+        stage.item_count = item_count
+        stage.completed_at = utc_now()
+
+    @staticmethod
+    def _fail_stage(stage: ProviderSyncStage, exc: Exception) -> None:
+        stage.status = "failed"
+        stage.error_summary = type(exc).__name__
+        stage.completed_at = utc_now()
 
     @staticmethod
     def _validate_squad(payload: list[dict], selected_team_id: str) -> list[dict]:

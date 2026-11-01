@@ -24,6 +24,7 @@ export interface SyncRun {
   remaining_quota?: number | null;
   result_summary?: SyncSummary | null;
   error_summary?: string | null;
+  stages?: Array<{ name: string; status: "pending" | "running" | "completed" | "skipped" | "failed"; item_count: number; error_summary?: string | null }>;
 }
 
 export interface IntegrationStatus {
@@ -38,6 +39,7 @@ export interface ClubCatalog {
   clubs: ProviderClub[];
   stale: boolean;
   cache_age_seconds?: number | null;
+  quota?: { calls_used: number; remaining: number };
 }
 
 export const getIntegrationStatus = () => request<IntegrationStatus>("/integrations/api-football/status");

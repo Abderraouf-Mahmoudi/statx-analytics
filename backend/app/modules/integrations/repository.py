@@ -7,10 +7,15 @@ import json
 from typing import Mapping
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.modules.integrations.api_football import ApiFootballClient, ProviderEnvelope, Scalar
-from app.modules.integrations.models import ProviderCacheEntry, ProviderQuotaDay
+from app.modules.integrations.models import (
+    ProviderCacheEntry,
+    ProviderQuotaDay,
+    ProviderRequestLease,
+)
 
 
 class QuotaReserved(RuntimeError):
@@ -21,6 +26,13 @@ class QuotaReserved(RuntimeError):
 class QuotaSnapshot:
     calls_used: int
     remaining: int
+
+
+@dataclass(frozen=True)
+class CachedProviderResponse:
+    envelope: ProviderEnvelope
+    stale: bool
+    cache_age_seconds: int
 
 
 def _utc(value: datetime) -> datetime:
@@ -77,6 +89,142 @@ class ProviderRepository:
         )
         return QuotaSnapshot(calls_used=row.calls_used, remaining=remaining)
 
+    def _cache_entry(
+        self, endpoint: str, params: Mapping[str, Scalar | None]
+    ) -> ProviderCacheEntry | None:
+        cache_key, _ = self._cache_identity(endpoint, params)
+        return self.session.scalar(
+            select(ProviderCacheEntry).where(
+                ProviderCacheEntry.provider == self.provider,
+                ProviderCacheEntry.cache_key == cache_key,
+            )
+        )
+
+    @staticmethod
+    def _envelope_from_cache(
+        cached: ProviderCacheEntry, remaining_quota: int
+    ) -> ProviderEnvelope:
+        payload = cached.response_json
+        return ProviderEnvelope(
+            response=payload["response"],
+            results=payload["results"],
+            page=payload["page"],
+            total_pages=payload["total_pages"],
+            remaining_quota=remaining_quota,
+        )
+
+    def cached_request_with_stale_fallback(
+        self,
+        endpoint: str,
+        params: Mapping[str, Scalar | None],
+        ttl: timedelta,
+        *,
+        now: datetime | None = None,
+    ) -> CachedProviderResponse:
+        """Return fresh data when possible and an expired cache on provider failure."""
+        moment = _utc(now or datetime.now(timezone.utc))
+        try:
+            envelope = self.cached_request(endpoint, params, ttl, now=moment)
+            cached = self._cache_entry(endpoint, params)
+            fetched_at = _utc(cached.fetched_at) if cached is not None else moment
+            age = max(0, int((moment - fetched_at).total_seconds()))
+            return CachedProviderResponse(envelope=envelope, stale=False, cache_age_seconds=age)
+        except Exception as exc:
+            from app.modules.integrations.api_football import (
+                IntegrationDisabled,
+                ProviderUnavailable,
+            )
+
+            if not isinstance(exc, (IntegrationDisabled, ProviderUnavailable, QuotaReserved)):
+                raise
+            cached = self._cache_entry(endpoint, params)
+            if cached is None:
+                raise
+            quota = self.quota_snapshot(now=moment)
+            age = max(0, int((moment - _utc(cached.fetched_at)).total_seconds()))
+            return CachedProviderResponse(
+                envelope=self._envelope_from_cache(cached, quota.remaining),
+                stale=True,
+                cache_age_seconds=age,
+            )
+
+    def cached_pages(
+        self,
+        endpoint: str,
+        params: Mapping[str, Scalar | None],
+        ttl: timedelta,
+        *,
+        max_pages: int,
+        now: datetime | None = None,
+    ) -> list[dict]:
+        """Fetch a bounded provider collection while accounting for each page."""
+        if max_pages < 1:
+            raise ValueError("max_pages must be positive")
+        rows: list[dict] = []
+        page = 1
+        while page <= max_pages:
+            envelope = self.cached_request(
+                endpoint,
+                {**params, "page": page},
+                ttl,
+                now=now,
+            )
+            rows.extend(envelope.response)
+            if page >= envelope.total_pages:
+                return rows
+            page += 1
+        return rows
+
+    def acquire_request_lease(
+        self,
+        scope_key: str,
+        owner_token: str,
+        *,
+        now: datetime | None = None,
+        ttl: timedelta = timedelta(seconds=30),
+    ) -> bool:
+        moment = _utc(now or datetime.now(timezone.utc))
+        existing = self.session.scalar(
+            select(ProviderRequestLease).where(
+                ProviderRequestLease.provider == self.provider,
+                ProviderRequestLease.scope_key == scope_key,
+            )
+        )
+        if existing is not None:
+            if existing.owner_token == owner_token:
+                return True
+            if _utc(existing.expires_at) > moment:
+                return False
+            self.session.delete(existing)
+            self.session.flush()
+        try:
+            with self.session.begin_nested():
+                self.session.add(
+                    ProviderRequestLease(
+                        provider=self.provider,
+                        scope_key=scope_key,
+                        owner_token=owner_token,
+                        acquired_at=moment,
+                        expires_at=moment + ttl,
+                    )
+                )
+                self.session.flush()
+        except IntegrityError:
+            return False
+        return True
+
+    def release_request_lease(self, scope_key: str, owner_token: str) -> None:
+        lease = self.session.scalar(
+            select(ProviderRequestLease).where(
+                ProviderRequestLease.provider == self.provider,
+                ProviderRequestLease.scope_key == scope_key,
+                ProviderRequestLease.owner_token == owner_token,
+            )
+        )
+        if lease is not None:
+            self.session.delete(lease)
+            self.session.flush()
+
     def cached_request(
         self,
         endpoint: str,
@@ -94,15 +242,8 @@ class ProviderRepository:
             )
         )
         if cached is not None and _utc(cached.expires_at) > moment:
-            payload = cached.response_json
             quota = self.quota_snapshot(now=moment)
-            return ProviderEnvelope(
-                response=payload["response"],
-                results=payload["results"],
-                page=payload["page"],
-                total_pages=payload["total_pages"],
-                remaining_quota=quota.remaining,
-            )
+            return self._envelope_from_cache(cached, quota.remaining)
 
         quota = self._quota_row(moment)
         if quota.calls_used >= self.daily_ceiling:

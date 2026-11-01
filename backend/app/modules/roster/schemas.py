@@ -2,7 +2,9 @@
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.modules.roster.positions import PositionCode
 
 
 class PlayerCommand(BaseModel):
@@ -10,15 +12,37 @@ class PlayerCommand(BaseModel):
     first_name: str = Field(min_length=1, max_length=80)
     last_name: str = Field(min_length=1, max_length=80)
     birth_date: date | None = None
-    primary_position: str = Field(min_length=1, max_length=50)
+    primary_position: PositionCode
     preferred_foot: str | None = Field(default=None, max_length=20)
+
+
+class PlayerUpdateCommand(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    first_name: str | None = Field(default=None, min_length=1, max_length=80)
+    last_name: str | None = Field(default=None, min_length=1, max_length=80)
+    display_name: str | None = Field(default=None, max_length=160)
+    birth_date: date | None = None
+    birth_place: str | None = Field(default=None, max_length=120)
+    birth_country: str | None = Field(default=None, max_length=80)
+    nationality: str | None = Field(default=None, max_length=80)
+    height_cm: int | None = Field(default=None, ge=120, le=230)
+    weight_kg: int | None = Field(default=None, ge=35, le=150)
+    primary_position: PositionCode | None = None
+    secondary_positions: list[PositionCode] | None = None
+    preferred_foot: str | None = Field(default=None, max_length=20)
+
+    @model_validator(mode="after")
+    def require_changed_field(self) -> "PlayerUpdateCommand":
+        if not self.model_fields_set:
+            raise ValueError("At least one player field is required")
+        return self
 
 
 class RegistrationCommand(BaseModel):
     player_id: str
     season_id: str
     shirt_number: int | None = Field(default=None, ge=0, le=99)
-    position: str | None = Field(default=None, max_length=50)
+    position: PositionCode | None = None
     start_date: date | None = None
     end_date: date | None = None
 
@@ -36,6 +60,14 @@ class PlayerView(BaseModel):
     first_name: str | None
     last_name: str | None
     birth_date: date | None
+    display_name: str | None
+    birth_place: str | None
+    birth_country: str | None
+    nationality: str | None
+    height_cm: int | None
+    weight_kg: int | None
+    primary_position: str
+    secondary_positions: list[str]
     preferred_foot: str | None
 
 
@@ -62,6 +94,7 @@ class ConsentView(BaseModel):
 
 
 class RosterItem(BaseModel):
+    registration_id: str
     player_id: str
     first_name: str
     last_name: str
@@ -71,6 +104,7 @@ class RosterItem(BaseModel):
     preferred_foot: str | None = None
     source: str = "manual"
     provider_absent: bool = False
-    photo_status: str | None = None
+    photo_status: str = "no_photo"
     photo_rights_status: str | None = None
+    registration_status: str = "active"
 

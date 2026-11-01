@@ -45,6 +45,15 @@ class SyncRunView(BaseModel):
     error_summary: str | None
     created_at: datetime
     completed_at: datetime | None
+    stages: list["SyncStageView"] = Field(default_factory=list)
+
+
+class SyncStageView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    name: str
+    status: str
+    item_count: int
+    error_summary: str | None
 
 
 class SelectedTeamView(BaseModel):
@@ -65,3 +74,9 @@ class ClubCatalog(BaseModel):
     clubs: list[ProviderClub]
     stale: bool = False
     cache_age_seconds: int | None = None
+    quota: "ProviderQuotaSummary"
+
+
+class ProviderQuotaSummary(BaseModel):
+    calls_used: int
+    remaining: int

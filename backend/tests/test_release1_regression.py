@@ -28,6 +28,7 @@ def test_release1_foundation_workflow_and_tenant_isolation(tmp_path: Path) -> No
         result = bootstrap_system(session, BootstrapCommand(
             organization_name="StatX Release Club", admin_display_name="Admin", email="admin@statx.local",
             password="A-secure-local-passphrase-2026", country_code="TN", default_locale="fr", timezone="Africa/Tunis",
+            job_title="analyst",
         ))
         session.commit()
         actor = authenticate(session, "admin@statx.local", "A-secure-local-passphrase-2026")

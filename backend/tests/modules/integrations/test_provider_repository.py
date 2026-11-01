@@ -85,3 +85,46 @@ def test_failed_remote_call_still_consumes_persisted_quota(session: Session) -> 
     session.rollback()
     recreated = ProviderRepository(session, FakeClient(), daily_ceiling=90)
     assert recreated.quota_snapshot(now=now).calls_used == 1
+
+
+def test_expired_cache_is_returned_as_stale_when_provider_is_unavailable(session: Session) -> None:
+    now = datetime(2026, 11, 1, 12, tzinfo=timezone.utc)
+    seed = ProviderRepository(session, FakeClient(), daily_ceiling=90)
+    seed.cached_request("/teams", {"league": 202}, timedelta(minutes=1), now=now)
+    session.commit()
+
+    class FailingClient:
+        def get(self, endpoint, params):
+            raise ProviderUnavailable("sanitized failure")
+
+    repository = ProviderRepository(session, FailingClient(), daily_ceiling=90)
+    result = repository.cached_request_with_stale_fallback(
+        "/teams", {"league": 202}, timedelta(minutes=1), now=now + timedelta(minutes=2)
+    )
+
+    assert result.stale is True
+    assert result.cache_age_seconds == 120
+    assert result.envelope.response[0]["endpoint"] == "/teams"
+
+
+def test_request_lease_allows_only_one_refresh_owner(tmp_path) -> None:
+    database = tmp_path / "leases.db"
+    engine = create_engine(f"sqlite:///{database.as_posix()}")
+    Base.metadata.create_all(engine)
+    first_session = Session(engine)
+    second_session = Session(engine)
+    try:
+        first = ProviderRepository(first_session, FakeClient(), daily_ceiling=90)
+        second = ProviderRepository(second_session, FakeClient(), daily_ceiling=90)
+
+        assert first.acquire_request_lease("setup:tunisia", "owner-1") is True
+        first_session.commit()
+        assert second.acquire_request_lease("setup:tunisia", "owner-2") is False
+
+        first.release_request_lease("setup:tunisia", "owner-1")
+        first_session.commit()
+        assert second.acquire_request_lease("setup:tunisia", "owner-2") is True
+    finally:
+        first_session.close()
+        second_session.close()
+        engine.dispose()
