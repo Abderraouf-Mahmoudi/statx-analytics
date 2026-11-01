@@ -45,6 +45,15 @@ class SyncRunView(BaseModel):
     error_summary: str | None
     created_at: datetime
     completed_at: datetime | None
+    stages: list["SyncStageView"] = Field(default_factory=list)
+
+
+class SyncStageView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    name: str
+    status: str
+    item_count: int
+    error_summary: str | None
 
 
 class SelectedTeamView(BaseModel):

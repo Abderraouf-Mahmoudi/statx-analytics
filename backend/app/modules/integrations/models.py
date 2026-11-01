@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import CheckConstraint, JSON, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
 
@@ -77,6 +77,11 @@ class ProviderSyncRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    stages: Mapped[list["ProviderSyncStage"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="ProviderSyncStage.id",
+    )
 
 
 class ProviderSyncStage(Base):
@@ -97,6 +102,7 @@ class ProviderSyncStage(Base):
     error_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    run: Mapped["ProviderSyncRun"] = relationship(back_populates="stages")
 
 
 class ProviderRequestLease(Base):

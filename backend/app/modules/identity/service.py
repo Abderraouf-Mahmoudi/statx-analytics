@@ -85,6 +85,14 @@ def bootstrap_system(session: Session, command: BootstrapCommand) -> BootstrapRe
     )
     session.add(membership)
     session.flush()
+    if command.selected_club is not None:
+        # Imported lazily to keep the identity and integration modules acyclic.
+        from app.modules.integrations.service import ClubSyncService
+
+        ClubSyncService(session, repository=None).queue_initial_sync(
+            organization.id,
+            command.selected_club,
+        )
     return BootstrapResult(organization=organization, user=user, membership=membership)
 
 

@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.modules.integrations.schemas import ClubSelectionCommand
+
 
 FootballJobTitle = Literal[
     "director",
@@ -27,6 +29,7 @@ class BootstrapCommand(BaseModel):
     default_locale: str = Field(default="fr", min_length=2, max_length=10)
     timezone: str = Field(default="UTC", min_length=1, max_length=64)
     job_title: FootballJobTitle
+    selected_club: ClubSelectionCommand | None = None
 
     @field_validator("country_code")
     @classmethod

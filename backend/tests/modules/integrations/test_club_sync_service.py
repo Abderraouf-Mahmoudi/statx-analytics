@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.db.model_registry import Base
 from app.modules.integrations.api_football import ProviderEnvelope
 from app.modules.integrations.schemas import ClubSelectionCommand
+from app.modules.integrations.models import ProviderSyncStage
 from app.modules.integrations.service import (
     ClubSyncService,
     InvalidProviderPayload,
@@ -154,4 +155,40 @@ def test_database_lease_allows_only_one_worker_and_recovers_after_expiry(tmp_pat
         assert recovered.public_id == run.public_id
     finally:
         competitor.close()
+        session.close()
+
+
+def test_sync_stages_are_persisted_and_optional_failure_is_sanitized(tmp_path) -> None:
+    session, organization = make_session(tmp_path)
+    payloads = provider_payloads()
+
+    class OptionalFailureRepository(FakeRepository):
+        def cached_request(self, endpoint, params, ttl: timedelta, *, now=None):
+            if endpoint == "/fixtures":
+                raise RuntimeError("x-apisports-key: secret-value")
+            return super().cached_request(endpoint, params, ttl, now=now)
+
+    service = ClubSyncService(session, OptionalFailureRepository(payloads))
+    try:
+        run = service.queue_initial_sync(organization.id, selection())
+        summary = service.execute_run(run.public_id)
+        session.commit()
+        stages = {
+            stage.name: stage
+            for stage in session.scalars(
+                select(ProviderSyncStage).where(ProviderSyncStage.sync_run_id == run.id)
+            )
+        }
+
+        assert run.status == "completed"
+        assert summary["fixtures"] == 0
+        assert stages["squad"].status == "completed"
+        assert stages["squad"].item_count == 2
+        assert stages["profiles"].status == "skipped"
+        assert stages["fixtures"].status == "failed"
+        assert stages["fixtures"].error_summary == "RuntimeError"
+        assert "secret-value" not in stages["fixtures"].error_summary
+        assert stages["standings"].status == "completed"
+        assert stages["portraits"].status == "pending"
+    finally:
         session.close()
