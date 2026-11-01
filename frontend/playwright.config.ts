@@ -11,7 +11,7 @@ export default defineConfig({
     {
       name: "application",
       dependencies: ["bootstrap"],
-      testMatch: /(roster-rtl-touch|club-import-player-cards|player-photo-touch)\.spec\.ts/,
+      testMatch: /(roster-rtl-touch|club-import-player-cards|player-photo-touch|setup-club-import|player-lifecycle)\.spec\.ts/,
     },
   ],
   use: { baseURL: "http://127.0.0.1:15173" },

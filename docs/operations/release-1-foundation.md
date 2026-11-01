@@ -45,7 +45,9 @@ npm.cmd install
 npm.cmd run dev -- --host 127.0.0.1
 ```
 
-Ouvrir `http://127.0.0.1:5173`, saisir les informations du club puis créer le premier compte administrateur. Ce bootstrap n’est possible qu’une fois.
+Ouvrir `http://127.0.0.1:5173`, choisir la fonction football du créateur, sélectionner le club tunisien puis confirmer. Le créateur reçoit toujours le rôle de sécurité `admin`, indépendamment de sa fonction. Ce bootstrap n’est possible qu’une fois. En cas d’indisponibilité du fournisseur, le bouton **Continuer sans import** conserve un démarrage entièrement manuel.
+
+L’import s’exécute après le commit du compte et affiche cinq phases indépendantes : effectif, profils, matchs, classement et portraits. Une panne du fournisseur ne supprime jamais le compte ni un effectif déjà validé. Les champs corrigés par le club restent prioritaires lors des synchronisations suivantes.
 
 ## 1.1 Traitement local des portraits
 
@@ -83,6 +85,23 @@ Alembic est l’unique propriétaire des changements de schéma. Ne pas créer l
 Le mode recommandé utilise `127.0.0.1` pour le backend et le frontend : seul le poste courant peut accéder aux services.
 
 Pour une tablette sur le même LAN, utiliser explicitement `--host 0.0.0.0` pour les deux services, remplacer `VITE_API_URL` par l’adresse IPv4 du poste, puis ajouter l’origine exacte du frontend à `CORS_ORIGINS`. N’ouvrir le pare-feu Windows que sur un réseau privé maîtrisé.
+
+Exemple pour un PC `192.168.1.20` :
+
+```dotenv
+# backend/.env
+CORS_ORIGINS=["http://127.0.0.1:5173","http://192.168.1.20:5173"]
+
+# frontend/.env
+VITE_API_URL=http://192.168.1.20:8000/api/v1
+```
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+cd ..\frontend
+npm.cmd run dev -- --host 0.0.0.0 --port 5173
+```
 
 Pour désactiver à nouveau l’accès LAN :
 
