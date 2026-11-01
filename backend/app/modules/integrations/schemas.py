@@ -65,3 +65,9 @@ class ClubCatalog(BaseModel):
     clubs: list[ProviderClub]
     stale: bool = False
     cache_age_seconds: int | None = None
+    quota: "ProviderQuotaSummary"
+
+
+class ProviderQuotaSummary(BaseModel):
+    calls_used: int
+    remaining: int

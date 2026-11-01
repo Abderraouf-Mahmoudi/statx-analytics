@@ -14,6 +14,10 @@ from app.modules.integrations.api_football import (
     IntegrationDisabled,
     ProviderUnavailable,
 )
+from app.modules.integrations.catalog import (
+    CatalogRefreshInProgress,
+    TunisianClubCatalogService,
+)
 from app.modules.integrations.models import ProviderQuotaDay, ProviderSyncRun
 from app.modules.integrations.repository import ProviderRepository, QuotaReserved
 from app.modules.integrations.schemas import (
@@ -87,9 +91,12 @@ def tunisian_clubs(
 ) -> ClubCatalog:
     repository = _repository(db, settings)
     try:
-        clubs = ClubSyncService(db, repository).list_tunisian_clubs()
+        catalog = TunisianClubCatalogService(repository).current_catalog()
         db.commit()
-        return ClubCatalog(clubs=clubs)
+        return catalog
+    except CatalogRefreshInProgress as exc:
+        db.rollback()
+        raise ProblemException(409, "catalog_refresh_in_progress", str(exc)) from exc
     except IntegrationDisabled as exc:
         db.rollback()
         raise ProblemException(503, "integration_disabled", str(exc)) from exc
