@@ -336,7 +336,7 @@ def list_roster(
                 preferred_foot=registration.preferred_foot or player.preferred_foot,
                 source=player.source,
                 provider_absent=player.provider_absent,
-                photo_status=photo.processing_status if photo else None,
+                photo_status=photo.processing_status if photo else "no_photo",
                 photo_rights_status=photo.rights_status if photo else None,
             )
         )

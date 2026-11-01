@@ -9,9 +9,18 @@ const sourceLabel: Record<string, string> = {
 
 const footLabel: Record<string, string> = { left: "Gauche", right: "Droit", both: "Deux pieds" };
 
-export function PlayerCard({ player, onManage }: { player: RosterEntry; onManage: () => void }) {
+const photoStateLabel = {
+  no_photo: "Ajouter une photo",
+  pending: "Portrait en attente",
+  processing: "Détourage en cours",
+  failed: "Réessayer le portrait",
+} as const;
+
+export function PlayerCard({ player, onManage, onPhotoAction }: { player: RosterEntry; onManage: () => void; onPhotoAction?: () => void }) {
   const name = `${player.first_name} ${player.last_name}`.trim();
   const hasPhoto = player.photo_status === "ready";
+  const photoState = player.photo_status ?? "no_photo";
+  const photoLabel = photoState === "ready" ? null : photoStateLabel[photoState];
   return <article className={`player-card ${player.provider_absent ? "is-stale" : ""}`}>
     <div className="player-card__frame" aria-hidden="true" />
     <div className="player-card__portrait">
@@ -25,6 +34,9 @@ export function PlayerCard({ player, onManage }: { player: RosterEntry; onManage
       {player.photo_rights_status === "provider_identification_only" && <span className="rights-badge">Identification uniquement</span>}
       {player.provider_absent && <span className="status-badge warning">Absent du dernier effectif API</span>}
     </div>
+    {!hasPhoto && (photoState === "no_photo" || photoState === "failed")
+      ? <button className="touch-target secondary-action" type="button" onClick={onPhotoAction}>{photoLabel}</button>
+      : !hasPhoto && <span className="status-badge warning" role="status">{photoLabel}</span>}
     <button className="touch-target player-card__action" type="button" aria-label={`Gérer ${name}`} onClick={onManage}>Gérer le joueur</button>
   </article>;
 }

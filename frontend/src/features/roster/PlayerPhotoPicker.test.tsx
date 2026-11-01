@@ -29,4 +29,28 @@ describe("PlayerPhotoPicker", () => {
     expect(upload).toHaveBeenCalledWith("p1", "gallery", file);
     expect(await screen.findByText("Portrait en traitement")).toBeVisible();
   });
+
+  it("polls a pending portrait and notifies when the ready image can replace it", async () => {
+    const user = userEvent.setup();
+    const upload = vi.fn().mockResolvedValue({ public_id: "photo-1", status: "pending" });
+    const getStatus = vi.fn()
+      .mockResolvedValueOnce({ public_id: "photo-1", status: "processing" })
+      .mockResolvedValueOnce({ public_id: "photo-1", status: "ready" });
+    const onReady = vi.fn();
+    render(<PlayerPhotoPicker
+      playerId="p1"
+      upload={upload}
+      getStatus={getStatus}
+      pollIntervalMs={5}
+      onReady={onReady}
+    />);
+
+    const file = new File(["portrait"], "amina.png", { type: "image/png" });
+    await user.upload(screen.getByLabelText("Choisir dans la galerie"), file);
+    await user.click(screen.getByRole("button", { name: "Envoyer le portrait" }));
+
+    expect(await screen.findByText("Portrait prêt")).toBeVisible();
+    expect(getStatus).toHaveBeenCalledWith("p1");
+    expect(onReady).toHaveBeenCalledTimes(1);
+  });
 });

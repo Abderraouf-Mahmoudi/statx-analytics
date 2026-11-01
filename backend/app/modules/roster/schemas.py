@@ -103,6 +103,6 @@ class RosterItem(BaseModel):
     preferred_foot: str | None = None
     source: str = "manual"
     provider_absent: bool = False
-    photo_status: str | None = None
+    photo_status: str = "no_photo"
     photo_rights_status: str | None = None
 

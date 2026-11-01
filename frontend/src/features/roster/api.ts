@@ -10,10 +10,10 @@ export interface RosterEntry {
   preferred_foot?: string | null;
   source?: "manual" | "club" | "api_football";
   provider_absent?: boolean;
-  photo_status?: "pending" | "processing" | "ready" | "failed" | null;
+  photo_status?: "no_photo" | "pending" | "processing" | "ready" | "failed";
   photo_rights_status?: string | null;
 }
-export interface PhotoView { public_id: string; source: string; status: "pending" | "processing" | "ready" | "failed"; rights_status?: string; error?: string | null }
+export interface PhotoView { public_id: string | null; source: string | null; status: "no_photo" | "pending" | "processing" | "ready" | "failed"; rights_status?: string | null; error?: string | null }
 export interface Team { public_id: string; name: string; category?: string | null }
 export interface Season { public_id: string; name: string }
 export interface PlayerView { public_id: string; first_name: string; last_name: string; birth_date?: string | null; preferred_foot?: string | null }
@@ -33,3 +33,5 @@ export const uploadPlayerPhoto = (playerId: string, source: "camera" | "gallery"
   body.append("photo", file);
   return request<PhotoView>(`/players/${playerId}/photo`, { method: "POST", body });
 };
+export const getPlayerPhotoStatus = (playerId: string) => request<PhotoView>(`/players/${playerId}/photo/status`);
+export const retryPlayerPhoto = (playerId: string) => request<PhotoView>(`/players/${playerId}/photo/retry`, { method: "POST" });

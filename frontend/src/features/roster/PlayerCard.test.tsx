@@ -19,4 +19,29 @@ describe("PlayerCard", () => {
     expect(screen.getByRole("img", { name: "Portrait de Amina Ben Salah" })).toHaveAttribute("src", expect.stringContaining("/players/p1/photo"));
     expect(screen.getByRole("button", { name: "Gérer Amina Ben Salah" })).toBeVisible();
   });
+
+  it.each([
+    ["no_photo", "Ajouter une photo"],
+    ["pending", "Portrait en attente"],
+    ["processing", "Détourage en cours"],
+    ["failed", "Réessayer le portrait"],
+  ] as const)("renders the %s portrait action", (photo_status, label) => {
+    render(<PlayerCard player={{
+      player_id: "p1", first_name: "Amina", last_name: "Ben Salah", shirt_number: 8,
+      position: "CM", publishable: true, photo_status,
+    }} onManage={vi.fn()} onPhotoAction={vi.fn()} />);
+
+    expect(screen.getByText(label)).toBeVisible();
+    expect(screen.queryByRole("img", { name: "Portrait de Amina Ben Salah" })).not.toBeInTheDocument();
+  });
+
+  it("never renders a provider CDN URL directly", () => {
+    render(<PlayerCard player={{
+      player_id: "p1", first_name: "Amina", last_name: "Ben Salah", shirt_number: 8,
+      position: "CM", publishable: true, source: "api_football", photo_status: "ready",
+    }} onManage={vi.fn()} />);
+    const portrait = screen.getByRole("img", { name: "Portrait de Amina Ben Salah" });
+    expect(portrait.getAttribute("src")).toContain("/api/v1/players/p1/photo");
+    expect(portrait.getAttribute("src")).not.toContain("api-sports.io");
+  });
 });
