@@ -8,6 +8,7 @@ export const setupSchema = z.object({
   country_code: z.string().length(2).default("TN"),
   default_locale: z.enum(["fr", "ar"]).default("fr"),
   timezone: z.string().default("Africa/Tunis"),
+  job_title: z.enum(["director", "coach", "analyst", "scout", "medical", "media", "other"]),
 });
 
 export type SetupPayload = z.infer<typeof setupSchema>;

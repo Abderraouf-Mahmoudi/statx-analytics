@@ -19,6 +19,7 @@ export function SetupPage({ bootstrap = defaultBootstrap, onComplete }: { bootst
     <label>Nom administrateur<input className="touch-target" name="admin_display_name" /></label>
     <label>Adresse e-mail<input className="touch-target" name="email" type="email" /></label>
     <label>Mot de passe<input className="touch-target" name="password" type="password" /></label>
+    <label>Fonction football<select className="touch-target" name="job_title" defaultValue="coach"><option value="director">Direction</option><option value="coach">Coach</option><option value="analyst">Analyste</option><option value="scout">Recruteur</option><option value="medical">Médical</option><option value="media">Média</option><option value="other">Autre</option></select></label>
     <input type="hidden" name="country_code" value="TN" /><input type="hidden" name="default_locale" value="fr" /><input type="hidden" name="timezone" value="Africa/Tunis" />
     {error && <p className="form-error" role="alert">{error}</p>}<button className="touch-target primary-action" disabled={pending}>{pending ? "Création…" : "Créer l’espace StatX"}</button>
   </form><div className="unavailable-step"><strong>Activation de licence</strong><span>Disponible dans une prochaine version</span></div></section></main>;

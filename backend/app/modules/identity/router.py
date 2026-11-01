@@ -35,6 +35,7 @@ def session_view(actor: Actor) -> SessionView:
         display_name=actor.display_name,
         email=actor.email,
         role=actor.role,
+        job_title=actor.job_title,
         locale=actor.locale,
     )
 

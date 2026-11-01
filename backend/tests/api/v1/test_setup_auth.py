@@ -24,6 +24,7 @@ from app.modules.identity.service import (
     authenticate,
     bootstrap_system,
 )
+from app.modules.identity.router import session_view
 from app.modules.organizations.models import Organization
 from app.modules.platform.models import SystemState
 
@@ -46,7 +47,36 @@ def bootstrap_command() -> BootstrapCommand:
         country_code="TN",
         default_locale="fr",
         timezone="Africa/Tunis",
+        job_title="coach",
     )
+
+
+def test_bootstrap_keeps_owner_admin_role_and_records_job_title(tmp_path: Path) -> None:
+    session = database_session(tmp_path)
+    try:
+        result = bootstrap_system(session, bootstrap_command())
+        session.commit()
+
+        actor = authenticate(session, "admin@statx.local", bootstrap_command().password)
+        view = session_view(actor)
+
+        assert result.membership.role == "admin"
+        assert result.user.job_title == "coach"
+        assert actor.role == "admin"
+        assert actor.job_title == "coach"
+        assert view.role == "admin"
+        assert view.job_title == "coach"
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("job_title", ["president", "goalkeeper", "root", ""])
+def test_bootstrap_rejects_unsupported_football_functions(job_title: str) -> None:
+    payload = bootstrap_command().model_dump()
+    payload["job_title"] = job_title
+
+    with pytest.raises(ValueError):
+        BootstrapCommand.model_validate(payload)
 
 
 def test_bootstrap_is_atomic_hashes_password_and_can_run_only_once(tmp_path: Path) -> None:

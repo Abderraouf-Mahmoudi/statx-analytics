@@ -6,7 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.modules.identity.models import Membership, User
-from app.modules.identity.schemas import BootstrapCommand
+from app.modules.identity.schemas import BootstrapCommand, FootballJobTitle
 from app.modules.identity.security import (
     InvalidCredentials,
     hash_password,
@@ -42,6 +42,7 @@ class Actor:
     display_name: str
     email: str
     role: str
+    job_title: FootballJobTitle
     locale: str
 
 
@@ -72,6 +73,7 @@ def bootstrap_system(session: Session, command: BootstrapCommand) -> BootstrapRe
         password_hash=hash_password(command.password),
         active=True,
         default_locale=command.default_locale,
+        job_title=command.job_title,
     )
     session.add_all([organization, user])
     session.flush()
@@ -96,6 +98,7 @@ def actor_from_models(user: User, membership: Membership, organization: Organiza
         display_name=user.display_name,
         email=user.email,
         role=membership.role,
+        job_title=user.job_title,
         locale=user.default_locale,
     )
 
