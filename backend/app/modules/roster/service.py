@@ -327,6 +327,7 @@ def list_roster(
         )
         result.append(
             RosterItem(
+                registration_id=registration.public_id,
                 player_id=player.public_id,
                 first_name=player.first_name or "",
                 last_name=player.last_name or "",
@@ -338,6 +339,7 @@ def list_roster(
                 provider_absent=player.provider_absent,
                 photo_status=photo.processing_status if photo else "no_photo",
                 photo_rights_status=photo.rights_status if photo else None,
+                registration_status=registration.status,
             )
         )
     return result

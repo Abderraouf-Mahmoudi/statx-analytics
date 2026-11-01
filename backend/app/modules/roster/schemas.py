@@ -94,6 +94,7 @@ class ConsentView(BaseModel):
 
 
 class RosterItem(BaseModel):
+    registration_id: str
     player_id: str
     first_name: str
     last_name: str
@@ -105,4 +106,5 @@ class RosterItem(BaseModel):
     provider_absent: bool = False
     photo_status: str = "no_photo"
     photo_rights_status: str | None = None
+    registration_status: str = "active"
 

@@ -3,6 +3,7 @@ import type { Season, Team } from "./api";
 import { playerSchema, registrationSchema } from "./schemas";
 import { RegistrationForm } from "./RegistrationForm";
 import { PlayerPhotoPicker, type PhotoSelection } from "./PlayerPhotoPicker";
+import { PositionSelect } from "./PositionSelect";
 
 export interface CreateRosterPayload {
   player: { first_name: string; last_name: string; birth_date?: string; primary_position: string; preferred_foot?: string };
@@ -43,7 +44,7 @@ export function PlayerForm({ teams, seasons, pending, onCancel, onSubmit }: {
       <label>Prénom<input className="touch-target" name="first_name" autoComplete="off" required /></label>
       <label>Nom<input className="touch-target" name="last_name" autoComplete="off" required /></label>
       <label>Date de naissance<input className="touch-target" name="birth_date" type="date" /></label>
-      <label>Poste principal<input className="touch-target" name="primary_position" placeholder="CM, GK, RW…" required /></label>
+      <label>Poste principal<PositionSelect required /></label>
       <label>Pied préféré<select className="touch-target" name="preferred_foot"><option value="">Non renseigné</option><option value="right">Droit</option><option value="left">Gauche</option><option value="both">Deux pieds</option></select></label>
     </div>
     <div><p className="eyebrow">PORTRAIT JOUEUR</p><PlayerPhotoPicker onSelectionChange={setPhoto} /></div>
